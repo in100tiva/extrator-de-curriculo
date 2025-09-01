@@ -6,6 +6,7 @@
     <title>Extrator de Dados de Currículos (PDF)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -113,7 +114,13 @@
 
             <!-- Results Section -->
             <div id="results" class="hidden">
-                <h2 class="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">Dados Extraídos</h2>
+                 <div class="flex justify-between items-center border-b pb-2 mb-6">
+                    <h2 class="text-2xl font-semibold text-gray-800">Dados Extraídos</h2>
+                    <button id="downloadExcelButton" class="hidden bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                        Baixar como Excel
+                    </button>
+                </div>
                 <div id="loader" class="text-center hidden my-4">
                     <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
                     <p id="loader-text" class="mt-3 text-gray-600">Analisando currículos...</p>
@@ -163,6 +170,7 @@
         const errorMessage = document.getElementById('error-message');
         const prevPageButton = document.getElementById('prev-page');
         const nextPageButton = document.getElementById('next-page');
+        const downloadExcelButton = document.getElementById('downloadExcelButton');
 
         const selectors = {
             idade: document.getElementById('select-idade'),
@@ -182,6 +190,7 @@
             if (files.length > 0) {
                 fileNameDisplay.textContent = `${files.length} arquivo(s) selecionado(s).`;
                 extractButton.disabled = false;
+                downloadExcelButton.classList.add('hidden');
                 hideError();
             } else {
                 fileNameDisplay.textContent = 'Nenhum arquivo selecionado.';
@@ -205,6 +214,7 @@
             resultsDiv.classList.remove('hidden');
             loader.classList.remove('hidden');
             progressSection.classList.add('hidden');
+            downloadExcelButton.classList.add('hidden');
             document.getElementById('pagination-controls').classList.add('hidden');
             extractButton.disabled = true;
             hideError();
@@ -249,8 +259,46 @@
             loader.classList.add('hidden');
             progressSection.classList.add('hidden');
             if (estimationInterval) clearInterval(estimationInterval);
+            if (allExtractedData.length > 0) {
+                downloadExcelButton.classList.remove('hidden');
+            }
             extractButton.disabled = false;
         });
+        
+        downloadExcelButton.addEventListener('click', () => {
+            if (allExtractedData.length === 0) return;
+
+            const headers = {
+                fileName: 'Arquivo',
+                nome: 'Nome'
+            };
+            if (currentSelectedFields.includes('idade')) headers.idade = 'Idade';
+            if (currentSelectedFields.includes('email')) headers.email = 'E-mail';
+            if (currentSelectedFields.includes('contatos')) headers.contatos = 'Contatos';
+
+            const dataToExport = allExtractedData.map(item => {
+                const row = {};
+                row[headers.fileName] = item.fileName;
+                row[headers.nome] = item.nome || 'N/A';
+                if (currentSelectedFields.includes('idade')) {
+                    row[headers.idade] = item.idade > 0 ? item.idade : 'N/A';
+                }
+                if (currentSelectedFields.includes('email')) {
+                    row[headers.email] = item.email || 'N/A';
+                }
+                if (currentSelectedFields.includes('contatos')) {
+                    row[headers.contatos] = item.contatos?.join(', ') || 'N/A';
+                }
+                return row;
+            });
+            
+            const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Dados dos Currículos");
+
+            XLSX.writeFile(workbook, "extracao_curriculos.xlsx");
+        });
+
 
         function startEstimationTimer(initialTime) {
             progressSection.classList.remove('hidden');
