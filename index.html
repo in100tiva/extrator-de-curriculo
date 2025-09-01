@@ -193,9 +193,8 @@
         }
         
         async function callGeminiAPI(text, selectedFields) {
-            const apiKey = ""; // Canvas will provide the key
-            const model = "gemini-2.5-flash-preview-05-20";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            // CORREÇÃO: A URL agora aponta para a nossa própria API na Vercel
+            const apiUrl = `/api/proxy`;
 
             const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
 
@@ -241,6 +240,7 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             };
 
             try {
+                // A chamada não contém a chave da API, pois ela está no servidor
                 const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 if (!response.ok) throw new Error(`API Error: ${response.status}`);
                 const result = await response.json();
@@ -307,4 +307,3 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
     </script>
 </body>
 </html>
-
