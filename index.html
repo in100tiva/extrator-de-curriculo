@@ -112,6 +112,18 @@
                 <div id="output" class="space-y-4">
                     <!-- Table will be inserted here -->
                 </div>
+                 <!-- Pagination Controls -->
+                <div id="pagination-controls" class="hidden mt-6 flex items-center justify-between">
+                    <span id="page-info" class="text-sm text-gray-700"></span>
+                    <div>
+                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
+                            Anterior
+                        </button>
+                        <button id="next-page" class="ml-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                            Próxima
+                        </button>
+                    </div>
+                </div>
             </div>
 
              <!-- Error Message -->
@@ -137,6 +149,8 @@
         const outputDiv = document.getElementById('output');
         const errorContainer = document.getElementById('error-container');
         const errorMessage = document.getElementById('error-message');
+        const prevPageButton = document.getElementById('prev-page');
+        const nextPageButton = document.getElementById('next-page');
 
         const selectors = {
             idade: document.getElementById('select-idade'),
@@ -147,7 +161,8 @@
         let allExtractedData = [];
         let sortState = { key: null, direction: 'asc' };
         let currentSelectedFields = [];
-
+        let currentPage = 1;
+        const ITEMS_PER_PAGE = 10;
 
         pdfFileInput.addEventListener('change', (event) => {
             const files = event.target.files;
@@ -170,10 +185,12 @@
             
             allExtractedData = [];
             sortState = { key: null, direction: 'asc' };
+            currentPage = 1;
             currentSelectedFields = Object.keys(selectors).filter(key => selectors[key].checked);
 
             resultsDiv.classList.remove('hidden');
             loader.classList.remove('hidden');
+            document.getElementById('pagination-controls').classList.add('hidden');
             extractButton.disabled = true;
             hideError();
             setupTable(currentSelectedFields);
@@ -199,6 +216,21 @@
 
             loader.classList.add('hidden');
             extractButton.disabled = false;
+        });
+
+        prevPageButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTable();
+            }
+        });
+
+        nextPageButton.addEventListener('click', () => {
+            const totalPages = Math.ceil(allExtractedData.length / ITEMS_PER_PAGE);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTable();
+            }
         });
 
         async function extractTextFromPdf(file) {
@@ -322,6 +354,7 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                         sortState.key = key;
                         sortState.direction = 'asc';
                     }
+                    currentPage = 1;
                     renderTable();
                 });
             });
@@ -376,7 +409,11 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             
             tableBody.innerHTML = ''; // Clear existing rows
 
-            allExtractedData.forEach(data => {
+            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const paginatedData = allExtractedData.slice(startIndex, endIndex);
+
+            paginatedData.forEach(data => {
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50';
 
@@ -397,13 +434,31 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                 tableBody.appendChild(row);
             });
             
-            // Update header styles
             document.querySelectorAll('.sortable-header').forEach(header => {
                 header.classList.remove('sorted', 'asc', 'desc');
                 if (header.dataset.sortKey === sortState.key) {
                     header.classList.add('sorted', sortState.direction);
                 }
             });
+
+            renderPaginationControls();
+        }
+
+        function renderPaginationControls() {
+            const pageInfo = document.getElementById('page-info');
+            const paginationControls = document.getElementById('pagination-controls');
+            const totalItems = allExtractedData.length;
+            const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+
+            if (totalPages <= 1) {
+                paginationControls.classList.add('hidden');
+                return;
+            }
+
+            paginationControls.classList.remove('hidden');
+            pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
+            prevPageButton.disabled = currentPage === 1;
+            nextPageButton.disabled = currentPage === totalPages;
         }
 
         function showError(message) {
