@@ -1,0 +1,13 @@
+{
+  "name": "extrator-curriculos-vercel",
+  "version": "1.0.0",
+  "description": "Proxy para a API do Gemini na Vercel",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "serve": "^14.0.0"
+  }
+}
