@@ -250,6 +250,7 @@
                     showError(`Falha ao processar o arquivo ${file.name}.`);
                     break; 
                 } finally {
+                    // This proactive delay helps prevent hitting the rate limit in the first place
                     if (i < files.length - 1) {
                        await new Promise(resolve => setTimeout(resolve, 2000));
                     }
@@ -372,6 +373,8 @@
         async function callGeminiAPI(text, selectedFields) {
             const apiUrl = `/api/proxy`;
             const currentYear = new Date().getFullYear();
+            const maxRetries = 5;
+            let delay = 2000; // Initial delay of 2 seconds
 
             const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
 
@@ -414,22 +417,42 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                     responseSchema: { type: "OBJECT", properties, required }
                 }
             };
+            
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        const candidate = result.candidates?.[0];
+                        if (candidate?.content?.parts?.[0]?.text) {
+                            return JSON.parse(candidate.content.parts[0].text);
+                        }
+                        throw new Error('Resposta da API inválida.');
+                    }
 
-            try {
-                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (!response.ok) throw new Error(`API Error: ${response.status}`);
-                const result = await response.json();
-                const candidate = result.candidates?.[0];
-                if (candidate?.content?.parts?.[0]?.text) {
-                    return JSON.parse(candidate.content.parts[0].text);
+                    if (response.status === 429 || response.status === 503) {
+                        if (attempt === maxRetries) {
+                            throw new Error(`API Error: ${response.status} (Limite de requisições atingido, máximo de tentativas excedido)`);
+                        }
+                        console.warn(`Congestionamento da API (status ${response.status}). Tentando novamente em ${delay / 1000}s... (Tentativa ${attempt}/${maxRetries})`);
+                        loaderText.textContent = `Congestionamento da API. Tentando novamente em ${delay/1000}s...`;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Exponential backoff
+                    } else {
+                        // For other client/server errors, fail immediately
+                        throw new Error(`API Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    if (attempt === maxRetries) {
+                        console.error("Error calling Gemini API after max retries:", error);
+                        showError(`Falha ao comunicar com a API. Detalhes: ${error.message}`);
+                        return null;
+                    }
                 }
-                throw new Error('Resposta da API inválida.');
-            } catch (error) {
-                console.error("Error calling Gemini API:", error);
-                showError(`Falha ao comunicar com a API. Detalhes: ${error.message}`);
-                return null;
             }
         }
+
 
         function setupTable(selectedFields) {
             const headers = [
