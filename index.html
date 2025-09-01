@@ -100,6 +100,7 @@
                 <button id="extractButton" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100" disabled>
                     Extrair Informações
                 </button>
+                 <p id="estimation-info" class="text-sm text-gray-600 mt-4 text-center hidden"></p>
             </div>
 
             <!-- Results Section -->
@@ -143,6 +144,7 @@
         const pdfFileInput = document.getElementById('pdfFile');
         const fileNameDisplay = document.getElementById('fileName');
         const extractButton = document.getElementById('extractButton');
+        const estimationInfo = document.getElementById('estimation-info');
         const resultsDiv = document.getElementById('results');
         const loader = document.getElementById('loader');
         const loaderText = document.getElementById('loader-text');
@@ -190,31 +192,50 @@
 
             resultsDiv.classList.remove('hidden');
             loader.classList.remove('hidden');
+            estimationInfo.classList.add('hidden');
+            estimationInfo.textContent = '';
             document.getElementById('pagination-controls').classList.add('hidden');
             extractButton.disabled = true;
             hideError();
             setupTable(currentSelectedFields);
 
             for (let i = 0; i < files.length; i++) {
-                if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
-                
                 const file = files[i];
                 loaderText.textContent = `Analisando arquivo ${i + 1} de ${files.length}: ${file.name}`;
+                
                 try {
+                    const startTime = performance.now();
                     const text = await extractTextFromPdf(file);
                     const data = await callGeminiAPI(text, currentSelectedFields);
+                    const endTime = performance.now();
+
                     if (data) {
                         allExtractedData.push({ ...data, fileName: file.name });
                         renderTable();
                     }
+
+                    // Estimate time after the first file is processed
+                    if (i === 0 && files.length > 1) {
+                        const duration = endTime - startTime;
+                        const remainingFiles = files.length - 1;
+                        const estimatedTime = duration * remainingFiles;
+                        showEstimation(estimatedTime);
+                    }
+
                 } catch (err) {
                     console.error(`Error processing file ${file.name}:`, err);
                     showError(`Falha ao processar o arquivo ${file.name}.`);
                     break; 
+                } finally {
+                    // Add delay for subsequent files
+                    if (i < files.length - 1) {
+                       await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
                 }
             }
 
             loader.classList.add('hidden');
+            estimationInfo.classList.add('hidden');
             extractButton.disabled = false;
         });
 
@@ -442,6 +463,20 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             });
 
             renderPaginationControls();
+        }
+        
+        function showEstimation(timeInMs) {
+            const seconds = Math.round(timeInMs / 1000);
+            let timeString;
+            if (seconds < 60) {
+                timeString = `${seconds} segundos`;
+            } else {
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = seconds % 60;
+                timeString = `${minutes} minuto(s)${remainingSeconds > 0 ? ` e ${remainingSeconds} segundo(s)` : ''}`;
+            }
+            estimationInfo.textContent = `Aguarde enquanto o Gemini extrai os dados. Tempo restante estimado: ${timeString}.`;
+            estimationInfo.classList.remove('hidden');
         }
 
         function renderPaginationControls() {
