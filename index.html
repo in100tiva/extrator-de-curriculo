@@ -222,12 +222,12 @@
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                loaderText.textContent = `Analisando arquivo ${i + 1} de ${files.length}: ${file.name}`;
                 
                 try {
                     const startTime = performance.now();
                     const text = await extractTextFromPdf(file);
-                    const data = await callGeminiAPI(text, currentSelectedFields);
+                    // Pass the file index to the API call for dynamic messaging
+                    const data = await callGeminiAPI(text, currentSelectedFields, i + 1, files.length);
                     const endTime = performance.now();
 
                     if (data) {
@@ -247,13 +247,8 @@
 
                 } catch (err) {
                     console.error(`Error processing file ${file.name}:`, err);
-                    showError(`Falha ao processar o arquivo ${file.name}.`);
+                    showError(`Falha ao processar o arquivo ${file.name}. Detalhes: ${err.message}`);
                     break; 
-                } finally {
-                    // This proactive delay helps prevent hitting the rate limit in the first place
-                    if (i < files.length - 1) {
-                       await new Promise(resolve => setTimeout(resolve, 2000));
-                    }
                 }
             }
 
@@ -370,7 +365,7 @@
             });
         }
         
-        async function callGeminiAPI(text, selectedFields) {
+        async function callGeminiAPI(text, selectedFields, fileIndex, totalFiles) {
             const apiUrl = `/api/proxy`;
             const currentYear = new Date().getFullYear();
             const maxRetries = 5;
@@ -419,6 +414,8 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             };
             
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                // Update message for the main loop
+                loaderText.textContent = `Analisando arquivo ${fileIndex} de ${totalFiles}...`;
                 try {
                     const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     
@@ -435,22 +432,31 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                         if (attempt === maxRetries) {
                             throw new Error(`API Error: ${response.status} (Limite de requisições atingido, máximo de tentativas excedido)`);
                         }
-                        console.warn(`Congestionamento da API (status ${response.status}). Tentando novamente em ${delay / 1000}s... (Tentativa ${attempt}/${maxRetries})`);
-                        loaderText.textContent = `Congestionamento da API. Tentando novamente em ${delay/1000}s...`;
-                        await new Promise(resolve => setTimeout(resolve, delay));
+                        const jitter = Math.random() * 1000; // Add jitter of 0-1000ms
+                        const waitTime = delay + jitter;
+                        console.warn(`Congestionamento da API (status ${response.status}). Tentando novamente em ${(waitTime / 1000).toFixed(1)}s... (Tentativa ${attempt}/${maxRetries})`);
+                        loaderText.textContent = `Congestionamento da API. Tentando novamente em ${(waitTime / 1000).toFixed(1)}s...`;
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
                         delay *= 2; // Exponential backoff
                     } else {
                         // For other client/server errors, fail immediately
                         throw new Error(`API Error: ${response.status}`);
                     }
                 } catch (error) {
+                    // This catch block is for network errors (e.g., fetch fails completely)
                     if (attempt === maxRetries) {
-                        console.error("Error calling Gemini API after max retries:", error);
-                        showError(`Falha ao comunicar com a API. Detalhes: ${error.message}`);
-                        return null;
+                         throw error; // Re-throw the last error
                     }
+                     // For network errors, we can also retry with backoff
+                    const jitter = Math.random() * 1000;
+                    const waitTime = delay + jitter;
+                    console.warn(`Erro de rede. Tentando novamente em ${(waitTime / 1000).toFixed(1)}s... (Tentativa ${attempt}/${maxRetries})`);
+                    loaderText.textContent = `Erro de rede. Tentando novamente...`;
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    delay *= 2;
                 }
             }
+             throw new Error("Falha na chamada da API após múltiplas tentativas.");
         }
 
 
@@ -521,7 +527,7 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                 }
                 if (key === 'contatos') {
                     const aHasContatos = valA && valA.length > 0;
-                    const bHasContatos = valB && bHasContatos > 0;
+                    const bHasContatos = valB && valB.length > 0;
                     if (aHasContatos && !bHasContatos) return -1;
                     if (!aHasContatos && bHasContatos) return 1;
                 }
