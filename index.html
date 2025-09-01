@@ -150,6 +150,11 @@
             setupTable(selectedFields);
 
             for (let i = 0; i < files.length; i++) {
+                // Adiciona uma pausa de 1 segundo antes de processar o próximo arquivo (exceto o primeiro)
+                if (i > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+
                 const file = files[i];
                 loaderText.textContent = `Analisando arquivo ${i + 1} de ${files.length}: ${file.name}`;
                 try {
@@ -161,6 +166,8 @@
                 } catch (err) {
                     console.error(`Error processing file ${file.name}:`, err);
                     showError(`Falha ao processar o arquivo ${file.name}.`);
+                    // Interrompe o loop se um arquivo falhar para evitar mais erros
+                    break; 
                 }
             }
 
