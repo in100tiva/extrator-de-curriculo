@@ -31,6 +31,28 @@
             text-align: left;
             padding: 12px 16px;
         }
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sortable-header:hover {
+            background-color: #f9fafb;
+        }
+        .sort-icon {
+            display: inline-block;
+            margin-left: 8px;
+            opacity: 0.5;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .sortable-header.sorted .sort-icon {
+            opacity: 1;
+        }
+        .sortable-header.sorted.asc .sort-icon {
+            transform: rotate(0deg);
+        }
+        .sortable-header.sorted.desc .sort-icon {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
@@ -122,6 +144,11 @@
             contatos: document.getElementById('select-contatos'),
         };
 
+        let allExtractedData = [];
+        let sortState = { key: null, direction: 'asc' };
+        let currentSelectedFields = [];
+
+
         pdfFileInput.addEventListener('change', (event) => {
             const files = event.target.files;
             if (files.length > 0) {
@@ -140,33 +167,32 @@
                 showError('Nenhum arquivo selecionado.');
                 return;
             }
-
-            const selectedFields = Object.keys(selectors).filter(key => selectors[key].checked);
+            
+            allExtractedData = [];
+            sortState = { key: null, direction: 'asc' };
+            currentSelectedFields = Object.keys(selectors).filter(key => selectors[key].checked);
 
             resultsDiv.classList.remove('hidden');
             loader.classList.remove('hidden');
             extractButton.disabled = true;
             hideError();
-            setupTable(selectedFields);
+            setupTable(currentSelectedFields);
 
             for (let i = 0; i < files.length; i++) {
-                // Adiciona uma pausa de 1 segundo antes de processar o próximo arquivo (exceto o primeiro)
-                if (i > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-
+                if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+                
                 const file = files[i];
                 loaderText.textContent = `Analisando arquivo ${i + 1} de ${files.length}: ${file.name}`;
                 try {
                     const text = await extractTextFromPdf(file);
-                    const data = await callGeminiAPI(text, selectedFields);
+                    const data = await callGeminiAPI(text, currentSelectedFields);
                     if (data) {
-                        appendRowToTable(data, file.name, selectedFields);
+                        allExtractedData.push({ ...data, fileName: file.name });
+                        renderTable();
                     }
                 } catch (err) {
                     console.error(`Error processing file ${file.name}:`, err);
                     showError(`Falha ao processar o arquivo ${file.name}.`);
-                    // Interrompe o loop se um arquivo falhar para evitar mais erros
                     break; 
                 }
             }
@@ -200,7 +226,6 @@
         }
         
         async function callGeminiAPI(text, selectedFields) {
-            // CORREÇÃO: A URL agora aponta para a nossa própria API na Vercel
             const apiUrl = `/api/proxy`;
 
             const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
@@ -220,7 +245,6 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             
             const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
             
-            // Build schema dynamically
             const properties = { nome: { type: "STRING", description: "O nome completo do candidato, formatado." } };
             const required = ["nome"];
 
@@ -247,7 +271,6 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             };
 
             try {
-                // A chamada não contém a chave da API, pois ela está no servidor
                 const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 if (!response.ok) throw new Error(`API Error: ${response.status}`);
                 const result = await response.json();
@@ -264,8 +287,20 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
         }
 
         function setupTable(selectedFields) {
-            const headers = ['Arquivo', 'Nome', ...selectedFields.map(f => f.charAt(0).toUpperCase() + f.slice(1))];
-            const headerHtml = headers.map(h => `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h}</th>`).join('');
+            const headers = [
+                { key: 'fileName', label: 'Arquivo', sortable: false },
+                { key: 'nome', label: 'Nome', sortable: true },
+                ...(selectedFields.map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1), sortable: true })))
+            ];
+            
+            const iconSvg = `<svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 15a.5.5 0 0 0 .5-.5V2.707l3.146 3.147a.5.5 0 0 0 .708-.708l-4-4a.5.5 0 0 0-.708 0l-4 4a.5.5 0 1 0 .708.708L7.5 2.707V14.5a.5.5 0 0 0 .5.5z"/></svg>`;
+            
+            const headerHtml = headers.map(h => {
+                if (h.sortable) {
+                    return `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="${h.key}">${h.label}${iconSvg}</th>`;
+                }
+                return `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h.label}</th>`;
+            }).join('');
 
             outputDiv.innerHTML = `
                 <div class="overflow-x-auto border border-gray-200 rounded-lg">
@@ -277,30 +312,98 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                         </tbody>
                     </table>
                 </div>`;
+            
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const key = header.dataset.sortKey;
+                    if (sortState.key === key) {
+                        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        sortState.key = key;
+                        sortState.direction = 'asc';
+                    }
+                    renderTable();
+                });
+            });
+        }
+        
+        function sortData() {
+            const { key, direction } = sortState;
+            if (!key) return;
+
+            allExtractedData.sort((a, b) => {
+                let valA = a[key];
+                let valB = b[key];
+                const factor = direction === 'asc' ? 1 : -1;
+
+                // Priority sorting for specific columns
+                if (key === 'idade') {
+                    const aHasAge = valA > 0;
+                    const bHasAge = valB > 0;
+                    if (aHasAge && !bHasAge) return -1;
+                    if (!aHasAge && bHasAge) return 1;
+                    return (valA - valB) * factor;
+                }
+                if (key === 'email') {
+                    const aHasEmail = valA && valA.length > 0;
+                    const bHasEmail = valB && valB.length > 0;
+                    if (aHasEmail && !bHasEmail) return -1;
+                    if (!aHasEmail && bHasEmail) return 1;
+                }
+                if (key === 'contatos') {
+                    const aHasContatos = valA && valA.length > 0;
+                    const bHasContatos = valB && valB.length > 0;
+                    if (aHasContatos && !bHasContatos) return -1;
+                    if (!aHasContatos && bHasContatos) return 1;
+                }
+
+                // Default string/number sort
+                if (typeof valA === 'string') {
+                    return valA.localeCompare(valB) * factor;
+                }
+                if (typeof valA === 'number') {
+                    return (valA - valB) * factor;
+                }
+                return 0;
+            });
         }
 
-        function appendRowToTable(data, fileName, selectedFields) {
+        function renderTable() {
+            sortData();
+
             const tableBody = document.querySelector('#output tbody');
             if (!tableBody) return;
+            
+            tableBody.innerHTML = ''; // Clear existing rows
 
-            const row = document.createElement('tr');
-            row.className = 'hover:bg-gray-50';
+            allExtractedData.forEach(data => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
 
-            let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${fileName}</td>
-                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'Não encontrado'}</td>`;
+                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>
+                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'Não encontrado'}</td>`;
 
-            if (selectedFields.includes('idade')) {
-                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
-            }
-            if (selectedFields.includes('email')) {
-                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
-            }
-            if (selectedFields.includes('contatos')) {
-                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
-            }
+                if (currentSelectedFields.includes('idade')) {
+                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
+                }
+                if (currentSelectedFields.includes('email')) {
+                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
+                }
+                if (currentSelectedFields.includes('contatos')) {
+                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
+                }
 
-            row.innerHTML = cells;
-            tableBody.appendChild(row);
+                row.innerHTML = cells;
+                tableBody.appendChild(row);
+            });
+            
+            // Update header styles
+            document.querySelectorAll('.sortable-header').forEach(header => {
+                header.classList.remove('sorted', 'asc', 'desc');
+                if (header.dataset.sortKey === sortState.key) {
+                    header.classList.add('sorted', sortState.direction);
+                }
+            });
         }
 
         function showError(message) {
@@ -314,3 +417,4 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
     </script>
 </body>
 </html>
+
