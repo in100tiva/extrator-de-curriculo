@@ -269,16 +269,15 @@
             if (allExtractedData.length === 0) return;
 
             const headers = {
-                fileName: 'Arquivo',
                 nome: 'Nome'
             };
             if (currentSelectedFields.includes('idade')) headers.idade = 'Idade';
             if (currentSelectedFields.includes('email')) headers.email = 'E-mail';
             if (currentSelectedFields.includes('contatos')) headers.contatos = 'Contatos';
+            headers.fileName = 'Arquivo'; // Moved to end
 
             const dataToExport = allExtractedData.map(item => {
                 const row = {};
-                row[headers.fileName] = item.fileName;
                 row[headers.nome] = item.nome || 'N/A';
                 if (currentSelectedFields.includes('idade')) {
                     row[headers.idade] = item.idade > 0 ? item.idade : 'N/A';
@@ -289,6 +288,7 @@
                 if (currentSelectedFields.includes('contatos')) {
                     row[headers.contatos] = item.contatos?.join(', ') || 'N/A';
                 }
+                row[headers.fileName] = item.fileName; // Moved to end
                 return row;
             });
             
@@ -433,9 +433,9 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
 
         function setupTable(selectedFields) {
             const headers = [
-                { key: 'fileName', label: 'Arquivo', sortable: false },
                 { key: 'nome', label: 'Nome', sortable: true },
-                ...(selectedFields.map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1), sortable: true })))
+                ...(selectedFields.map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1), sortable: true }))),
+                { key: 'fileName', label: 'Arquivo', sortable: false }
             ];
             
             const iconSvg = `<svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 15a.5.5 0 0 0 .5-.5V2.707l3.146 3.147a.5.5 0 0 0 .708-.708l-4-4a.5.5 0 0 0-.708 0l-4 4a.5.5 0 1 0 .708.708L7.5 2.707V14.5a.5.5 0 0 0 .5.5z"/></svg>`;
@@ -530,8 +530,7 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50';
 
-                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>
-                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'Não encontrado'}</td>`;
+                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'Não encontrado'}</td>`;
 
                 if (currentSelectedFields.includes('idade')) {
                     cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
@@ -542,6 +541,8 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                 if (currentSelectedFields.includes('contatos')) {
                     cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
                 }
+                
+                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
 
                 row.innerHTML = cells;
                 tableBody.appendChild(row);
