@@ -200,31 +200,24 @@
         
         function listenForJobUpdates(jobIds) {
             if (unsubscribe) unsubscribe(); 
-            // --- CORREÇÃO APLICADA AQUI ---
-            // A consulta agora filtra APENAS pelo userId, garantindo que todas as
-            // atualizações (incluindo 'completed' e 'failed') sejam recebidas.
             const q = query(collection(db, "processing_queue"), where('userId', '==', userId));
             
             unsubscribe = onSnapshot(q, (snapshot) => {
                 let processedInThisBatch = 0;
                 snapshot.docChanges().forEach((change) => {
                     const job = change.doc.data();
-                    // Garante que estamos lidando apenas com os jobs enviados nesta sessão
                     if (jobIds.includes(change.doc.id)) {
-                        if (change.type === "added" || change.type === "modified") {
-                            const existingIndex = allExtractedData.findIndex(d => d.jobId === change.doc.id);
-                            
-                            if (job.status === 'completed' && job.result) {
-                                if (existingIndex === -1) {
-                                    allExtractedData.push({ ...job.result, jobId: change.doc.id, fileName: job.fileName });
-                                    processedInThisBatch++;
-                                }
-                            } else if (job.status === 'failed' && existingIndex === -1) {
-                                // Adiciona um placeholder para arquivos que falharam para contar no progresso
-                                allExtractedData.push({ jobId: change.doc.id, fileName: job.fileName, nome: `FALHA: ${job.fileName}` });
-                                showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
+                        const existingIndex = allExtractedData.findIndex(d => d.jobId === change.doc.id);
+                        
+                        if (job.status === 'completed' && job.result) {
+                            if (existingIndex === -1) {
+                                allExtractedData.push({ ...job.result, jobId: change.doc.id, fileName: job.fileName });
                                 processedInThisBatch++;
                             }
+                        } else if (job.status === 'failed' && existingIndex === -1) {
+                            allExtractedData.push({ jobId: change.doc.id, fileName: job.fileName, nome: `FALHA: ${job.fileName}` });
+                            showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
+                            processedInThisBatch++;
                         }
                     }
                 });
@@ -241,18 +234,16 @@
         }
 
         async function updateQueueStatus(jobIds) {
-            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('status', '==', 'pending'));
-            const pendingSnapshot = await getDocs(q);
-            const totalInQueue = pendingSnapshot.docs.length;
-            
             const completedJobs = allExtractedData.length;
-            ui.queuePosition.textContent = `${completedJobs} de ${jobIds.length} arquivos processados. ${totalInQueue} na fila.`;
+            const totalJobs = jobIds.length;
+            const remaining = totalJobs - completedJobs;
+
+            ui.queuePosition.textContent = `${completedJobs} de ${totalJobs} arquivos processados. ${remaining > 0 ? `${remaining} na fila.` : 'Fila concluída!'}`;
             
-            const progress = jobIds.length > 0 ? (completedJobs / jobIds.length) * 100 : 0;
+            const progress = totalJobs > 0 ? (completedJobs / totalJobs) * 100 : 0;
             ui.progressBar.style.width = `${progress}%`;
 
-            if (completedJobs === jobIds.length) {
-                ui.queuePosition.textContent = "Todos os arquivos foram processados!";
+            if (completedJobs === totalJobs) {
                 if (unsubscribe) {
                     unsubscribe();
                     unsubscribe = null;
@@ -266,6 +257,7 @@
             currentPage = 1;
             ui.resultsDiv.classList.add('hidden');
             ui.outputDiv.innerHTML = '';
+            ui.downloadExcelButton.classList.add('hidden');
             hideError();
         }
 
@@ -379,7 +371,7 @@
         
         ui.downloadExcelButton.addEventListener('click', () => {
             const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-            const dataToExport = allExtractedData.map(item => {
+            const dataToExport = allExtractedData.filter(item => !item.nome.startsWith("FALHA:")).map(item => {
                 const row = { Nome: item.nome || 'N/A' };
                 if (selectedFields.includes('idade')) row.Idade = item.idade > 0 ? item.idade : 'N/A';
                 if (selectedFields.includes('email')) row['E-mail'] = item.email || 'N/A';
