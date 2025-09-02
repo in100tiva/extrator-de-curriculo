@@ -1,13 +1,17 @@
 {
-  "name": "extrator-curriculos-vercel",
-  "version": "1.0.0",
-  "description": "Proxy para a API do Gemini na Vercel",
+  "name": "extrator-curriculos-escalavel",
+  "version": "2.0.0",
+  "description": "Extrator de currículos com fila de processamento na Vercel",
   "main": "index.html",
   "scripts": {
     "start": "serve"
   },
-  "dependencies": {},
+  "dependencies": {
+    "firebase": "^10.12.2",
+    "firebase-admin": "^12.1.1"
+  },
   "devDependencies": {
     "serve": "^14.0.0"
   }
 }
+

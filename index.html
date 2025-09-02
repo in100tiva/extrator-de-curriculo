@@ -19,6 +19,7 @@
         .sortable-header.sorted.asc .sort-icon { transform: rotate(0deg); }
         .sortable-header.sorted.desc .sort-icon { transform: rotate(180deg); }
         #progress-bar { transition: width 0.3s ease-in-out; }
+        .queue-status-card { background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem; text-align: center; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
@@ -26,10 +27,11 @@
     <div class="w-full max-w-5xl mx-auto bg-white rounded-2xl shadow-lg p-8">
         <header class="text-center mb-8">
             <h1 class="text-3xl font-bold text-gray-800">Extrator de Dados de Currículos</h1>
-            <p class="text-gray-600 mt-2">Faça o upload de um ou mais currículos em PDF para extrair os dados de forma rápida e segura.</p>
+            <p class="text-gray-600 mt-2">Faça o upload de um ou mais currículos em PDF para extrair os dados em uma tabela.</p>
         </header>
 
         <main>
+            <!-- File Upload Section -->
             <div class="text-center mb-6">
                 <label for="pdfFile" class="file-input-button">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
@@ -39,6 +41,7 @@
                 <p id="fileName" class="text-sm mt-4"></p>
             </div>
 
+            <!-- Data Selector Section -->
             <div class="mb-6">
                 <h3 class="text-lg font-medium text-gray-700 text-center mb-3">Selecione os dados para extrair:</h3>
                 <div class="flex justify-center items-center space-x-6 text-gray-600">
@@ -48,19 +51,25 @@
                 </div>
             </div>
 
+            <!-- Action Button -->
             <div class="text-center mb-8">
                 <button id="extractButton" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100" disabled>
-                    Extrair Informações
+                    Enviar para a Fila de Extração
                 </button>
             </div>
-            
-            <div id="progress-section" class="hidden my-4">
-                <p id="progress-text" class="text-sm text-gray-600 text-center"></p>
-                <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                    <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
+
+            <!-- Queue Status Section -->
+            <div id="queue-status-section" class="hidden mb-8">
+                <div class="queue-status-card">
+                    <h3 class="text-lg font-semibold text-gray-800">Status da Fila</h3>
+                    <p id="queue-position" class="text-gray-600 mt-2"></p>
+                    <div id="progress-container" class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                        <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
                 </div>
             </div>
 
+            <!-- Results Section -->
             <div id="results" class="hidden">
                 <div class="flex justify-between items-center border-b pb-2 mb-6">
                     <h2 class="text-2xl font-semibold text-gray-800">Dados Extraídos</h2>
@@ -87,17 +96,34 @@
     </div>
 
     <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        
+        // Importa a biblioteca pdf.js
         const { pdfjsLib } = globalThis;
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
+
+        // Sua configuração do Firebase
+        const firebaseConfig = {
+          apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
+          authDomain: "pdf-extrator.firebaseapp.com",
+          projectId: "pdf-extrator",
+          storageBucket: "pdf-extrator.appspot.com",
+          messagingSenderId: "1083062925751",
+          appId: "1:1083062925751:web:384523e9beb7362bbd5032",
+          measurementId: "G-29B954MXCN"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
         
         const ui = {};
-        // Mapping UI elements
         Object.assign(ui, {
             pdfFileInput: document.getElementById('pdfFile'),
             fileNameDisplay: document.getElementById('fileName'),
             extractButton: document.getElementById('extractButton'),
-            progressSection: document.getElementById('progress-section'),
-            progressText: document.getElementById('progress-text'),
+            queueStatusSection: document.getElementById('queue-status-section'),
+            queuePosition: document.getElementById('queue-position'),
             progressBar: document.getElementById('progress-bar'),
             resultsDiv: document.getElementById('results'),
             outputDiv: document.getElementById('output'),
@@ -119,7 +145,9 @@
         let sortState = { key: null, direction: 'asc' };
         let currentPage = 1;
         const ITEMS_PER_PAGE = 10;
-        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        let unsubscribe = null;
+        let userId = localStorage.getItem('userId') || `user_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('userId', userId);
 
         ui.pdfFileInput.addEventListener('change', (e) => {
             const files = e.target.files;
@@ -134,36 +162,97 @@
 
             resetState();
             ui.extractButton.disabled = true;
-            ui.progressSection.classList.remove('hidden');
+            ui.queueStatusSection.classList.remove('hidden');
 
             const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+            const jobIds = [];
 
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                ui.progressText.textContent = `Processando arquivo ${i + 1} de ${files.length}: ${file.name}`;
-                ui.progressBar.style.width = `${((i + 1) / files.length) * 100}%`;
-
+            for (const file of files) {
                 try {
                     const text = await extractTextFromPdf(file);
-                    const data = await callGeminiAPI(text, selectedFields);
-                    if (data) {
-                        allExtractedData.push({ ...data, fileName: file.name });
-                    } else {
-                        throw new Error("Não foi possível extrair dados do arquivo.");
-                    }
-                    await sleep(1500); // Wait 1.5 seconds to respect API rate limits
+                    const docRef = await addDoc(collection(db, "processing_queue"), {
+                        userId: userId,
+                        fileName: file.name,
+                        text: text,
+                        selectedFields: selectedFields,
+                        status: 'pending',
+                        createdAt: serverTimestamp()
+                    });
+                    jobIds.push(docRef.id);
                 } catch (err) {
-                    showError(`Falha ao processar ${file.name}: ${err.message}`);
-                    await sleep(2000); // Longer pause on error
+                    showError(`Falha ao enviar o arquivo ${file.name} para a fila.`);
+                    console.error(err);
                 }
             }
 
-            ui.progressSection.classList.add('hidden');
-            ui.extractButton.disabled = false;
-            if (allExtractedData.length > 0) {
-                renderTable();
+            if (jobIds.length > 0) {
+                listenForJobUpdates(jobIds);
+                try {
+                    await fetch('/api/start-processing', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: userId })
+                    });
+                } catch (err) {
+                    showError("Falha ao iniciar o processamento no servidor.");
+                    console.error("Error triggering worker:", err);
+                }
             }
         });
+        
+        function listenForJobUpdates(jobIds) {
+             if (unsubscribe) unsubscribe(); 
+            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('__name__', 'in', jobIds));
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "modified") {
+                        const job = change.doc.data();
+                        if (job.status === 'completed' && job.result) {
+                            const existingIndex = allExtractedData.findIndex(d => d.fileName === job.fileName);
+                            if (existingIndex === -1) {
+                                allExtractedData.push({ ...job.result, fileName: job.fileName });
+                            }
+                        } else if (job.status === 'failed') {
+                            showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
+                        }
+                    }
+                });
+                renderTable(); // Re-render on any change to update progress
+                updateQueueStatus(jobIds);
+            }, (error) => {
+                console.error("Error in snapshot listener: ", error);
+                showError("Erro de permissão ao ler os resultados. Verifique as regras de segurança do Firestore.");
+            });
+        }
+
+        async function updateQueueStatus(jobIds) {
+            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('status', '==', 'pending'), orderBy('createdAt'));
+            const pendingSnapshot = await getDocs(q);
+            const totalInQueue = pendingSnapshot.docs.length;
+            
+            const completedJobs = allExtractedData.length;
+            ui.queuePosition.textContent = totalInQueue > 0 ? `${completedJobs} de ${jobIds.length} arquivos processados. ${totalInQueue} na fila.` : 'Processando...';
+            
+            const progress = jobIds.length > 0 ? (completedJobs / jobIds.length) * 100 : 0;
+            ui.progressBar.style.width = `${progress}%`;
+
+            if (completedJobs === jobIds.length) {
+                ui.queuePosition.textContent = "Todos os arquivos foram processados!";
+                if (unsubscribe) {
+                    unsubscribe();
+                    unsubscribe = null;
+                }
+            }
+        }
+        
+        function resetState() {
+            allExtractedData = [];
+            sortState = { key: null, direction: 'asc' };
+            currentPage = 1;
+            ui.resultsDiv.classList.add('hidden');
+            ui.outputDiv.innerHTML = '';
+            hideError();
+        }
 
         async function extractTextFromPdf(file) {
             const fileReader = new FileReader();
@@ -186,65 +275,6 @@
             });
         }
         
-        async function callGeminiAPI(text, selectedFields) {
-            const payload = { text, selectedFields };
-            const response = await fetch('/api/proxy', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Erro do servidor: ${response.status}`);
-            }
-            return await response.json();
-        }
-
-        function resetState() {
-            allExtractedData = [];
-            sortState = { key: null, direction: 'asc' };
-            currentPage = 1;
-            ui.resultsDiv.classList.add('hidden');
-            ui.outputDiv.innerHTML = '';
-            hideError();
-        }
-
-        function renderTable() {
-            if (!document.querySelector('#output table')) {
-                setupTable();
-            }
-            ui.resultsDiv.classList.remove('hidden');
-            if(allExtractedData.length > 0) ui.downloadExcelButton.classList.remove('hidden');
-            sortData();
-
-            const tableBody = document.querySelector('#output tbody');
-            if (!tableBody) return;
-            tableBody.innerHTML = '';
-            
-            const paginatedData = allExtractedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-
-            paginatedData.forEach(data => {
-                const row = document.createElement('tr');
-                row.className = 'hover:bg-gray-50';
-                const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'N/A'}</td>`;
-                if (selectedFields.includes('idade')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
-                if (selectedFields.includes('email')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
-                if (selectedFields.includes('contatos')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
-                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
-                row.innerHTML = cells;
-                tableBody.appendChild(row);
-            });
-
-            document.querySelectorAll('.sortable-header').forEach(h => {
-                h.classList.remove('sorted', 'asc', 'desc');
-                if (h.dataset.sortKey === sortState.key) {
-                    h.classList.add('sorted', sortState.direction);
-                }
-            });
-            renderPaginationControls();
-        }
-
         function setupTable() {
             const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
             const headers = [
@@ -270,42 +300,59 @@
             if (!sortState.key) return;
             const { key, direction } = sortState;
             const factor = direction === 'asc' ? 1 : -1;
-
             allExtractedData.sort((a, b) => {
-                let valA = a[key];
-                let valB = b[key];
-
+                let valA = a[key], valB = b[key];
                 if (valA === undefined || valA === null) valA = '';
                 if (valB === undefined || valB === null) valB = '';
-
                 if (key === 'idade') {
-                    const aHas = valA > 0;
-                    const bHas = valB > 0;
+                    const aHas = valA > 0, bHas = valB > 0;
                     if (aHas !== bHas) return aHas ? -1 : 1;
                     return (valA - valB) * factor;
                 }
                 if (key === 'email' || key === 'contatos') {
-                    const aHas = Array.isArray(valA) ? valA.length > 0 : (valA || '').length > 0;
-                    const bHas = Array.isArray(valB) ? valB.length > 0 : (valB || '').length > 0;
+                    const aHas = Array.isArray(valA) ? valA.length > 0 : String(valA).length > 0;
+                    const bHas = Array.isArray(valB) ? valB.length > 0 : String(valB).length > 0;
                     if (aHas !== bHas) return aHas ? -1 : 1;
                 }
-
-                if (typeof valA === 'string') {
-                    return valA.localeCompare(valB, 'pt-BR') * factor;
-                }
-                if (typeof valA === 'number') {
-                    return (valA - valB) * factor;
-                }
+                if (typeof valA === 'string') return valA.localeCompare(valB, 'pt-BR') * factor;
+                if (typeof valA === 'number') return (valA - valB) * factor;
                 return 0;
             });
         }
 
+        function renderTable() {
+            if (!document.querySelector('#output table')) {
+                setupTable();
+            }
+            ui.resultsDiv.classList.remove('hidden');
+            if (allExtractedData.length > 0) ui.downloadExcelButton.classList.remove('hidden');
+            sortData();
+            const tableBody = document.querySelector('#output tbody');
+            if (!tableBody) return;
+            tableBody.innerHTML = '';
+            const paginatedData = allExtractedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+            paginatedData.forEach(data => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'N/A'}</td>`;
+                if (selectedFields.includes('idade')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
+                if (selectedFields.includes('email')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
+                if (selectedFields.includes('contatos')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
+                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
+                row.innerHTML = cells;
+                tableBody.appendChild(row);
+            });
+            document.querySelectorAll('.sortable-header').forEach(h => {
+                h.classList.remove('sorted', 'asc', 'desc');
+                if (h.dataset.sortKey === sortState.key) h.classList.add('sorted', sortState.direction);
+            });
+            renderPaginationControls();
+        }
+
         function renderPaginationControls() {
             const totalPages = Math.ceil(allExtractedData.length / ITEMS_PER_PAGE);
-            if (totalPages <= 1) {
-                ui.paginationControls.classList.add('hidden');
-                return;
-            }
+            if (totalPages <= 1) return ui.paginationControls.classList.add('hidden');
             ui.paginationControls.classList.remove('hidden');
             ui.pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
             ui.prevPage.disabled = currentPage === 1;
