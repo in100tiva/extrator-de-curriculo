@@ -8,55 +8,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        .file-input-button {
-            cursor: pointer;
-            padding: 0.75rem 1.5rem;
-            background-color: #4f46e5;
-            color: white;
-            border-radius: 0.5rem;
-            transition: background-color 0.3s;
-            font-weight: 500;
-        }
-        .file-input-button:hover {
-            background-color: #4338ca;
-        }
-        #fileName {
-            margin-top: 1rem;
-            color: #4b5563;
-            font-style: italic;
-        }
-        table th, table td {
-            text-align: left;
-            padding: 12px 16px;
-        }
-        .sortable-header {
-            cursor: pointer;
-            user-select: none;
-        }
-        .sortable-header:hover {
-            background-color: #f9fafb;
-        }
-        .sort-icon {
-            display: inline-block;
-            margin-left: 8px;
-            opacity: 0.5;
-            transition: opacity 0.2s, transform 0.2s;
-        }
-        .sortable-header.sorted .sort-icon {
-            opacity: 1;
-        }
-        .sortable-header.sorted.asc .sort-icon {
-            transform: rotate(0deg);
-        }
-        .sortable-header.sorted.desc .sort-icon {
-            transform: rotate(180deg);
-        }
-        #progress-bar {
-            transition: width 0.3s ease-in-out;
-        }
+        body { font-family: 'Inter', sans-serif; }
+        .file-input-button { cursor: pointer; padding: 0.75rem 1.5rem; background-color: #4f46e5; color: white; border-radius: 0.5rem; transition: background-color 0.3s; font-weight: 500; }
+        .file-input-button:hover { background-color: #4338ca; }
+        #fileName { margin-top: 1rem; color: #4b5563; font-style: italic; }
+        table th, table td { text-align: left; padding: 12px 16px; }
+        .sortable-header { cursor: pointer; user-select: none; }
+        .sortable-header:hover { background-color: #f9fafb; }
+        .sort-icon { display: inline-block; margin-left: 8px; opacity: 0.5; transition: opacity 0.2s, transform 0.2s; }
+        .sortable-header.sorted .sort-icon { opacity: 1; }
+        .sortable-header.sorted.asc .sort-icon { transform: rotate(0deg); }
+        .sortable-header.sorted.desc .sort-icon { transform: rotate(180deg); }
+        #progress-bar { transition: width 0.3s ease-in-out; }
+        .queue-status-card { background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem; text-align: center; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
@@ -71,41 +35,35 @@
             <!-- File Upload Section -->
             <div class="text-center mb-6">
                 <label for="pdfFile" class="file-input-button">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                     Escolher Arquivo(s) PDF
                 </label>
                 <input type="file" id="pdfFile" accept=".pdf" class="hidden" multiple>
                 <p id="fileName" class="text-sm"></p>
             </div>
 
-             <!-- Data Selector Section -->
+            <!-- Data Selector Section -->
             <div class="mb-6">
                 <h3 class="text-lg font-medium text-gray-700 text-center mb-3">Selecione os dados para extrair:</h3>
                 <div class="flex justify-center items-center space-x-6 text-gray-600">
-                    <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="select-idade" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
-                        <span class="ml-2">Idade</span>
-                    </label>
-                    <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="select-email" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
-                        <span class="ml-2">E-mail</span>
-                    </label>
-                    <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="select-contatos" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
-                        <span class="ml-2">Contatos</span>
-                    </label>
+                    <label class="flex items-center cursor-pointer"><input type="checkbox" id="select-idade" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked><span class="ml-2">Idade</span></label>
+                    <label class="flex items-center cursor-pointer"><input type="checkbox" id="select-email" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked><span class="ml-2">E-mail</span></label>
+                    <label class="flex items-center cursor-pointer"><input type="checkbox" id="select-contatos" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked><span class="ml-2">Contatos</span></label>
                 </div>
             </div>
 
             <!-- Action Button -->
             <div class="text-center mb-8">
                 <button id="extractButton" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100" disabled>
-                    Extrair Informações
+                    Enviar para a Fila de Extração
                 </button>
-                 <div id="progress-section" class="mt-4 hidden">
-                    <p id="estimation-info" class="text-sm text-gray-600 text-center"></p>
+            </div>
+
+            <!-- Queue Status Section -->
+            <div id="queue-status-section" class="hidden mb-8">
+                <div class="queue-status-card">
+                    <h3 class="text-lg font-semibold text-gray-800">Status da Fila</h3>
+                    <p id="queue-position" class="text-gray-600 mt-2"></p>
                     <div id="progress-container" class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
                         <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
                     </div>
@@ -114,30 +72,19 @@
 
             <!-- Results Section -->
             <div id="results" class="hidden">
-                 <div class="flex justify-between items-center border-b pb-2 mb-6">
+                <div class="flex justify-between items-center border-b pb-2 mb-6">
                     <h2 class="text-2xl font-semibold text-gray-800">Dados Extraídos</h2>
                     <button id="downloadExcelButton" class="hidden bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                         Baixar como Excel
                     </button>
                 </div>
-                <div id="loader" class="text-center hidden my-4">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-                    <p id="loader-text" class="mt-3 text-gray-600">Analisando currículos...</p>
-                </div>
-                <div id="output" class="space-y-4">
-                    <!-- Table will be inserted here -->
-                </div>
-                 <!-- Pagination Controls -->
+                <div id="output" class="space-y-4"></div>
                 <div id="pagination-controls" class="hidden mt-6 flex items-center justify-between">
                     <span id="page-info" class="text-sm text-gray-700"></span>
                     <div>
-                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                            Anterior
-                        </button>
-                        <button id="next-page" class="ml-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
-                            Próxima
-                        </button>
+                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">Anterior</button>
+                        <button id="next-page" class="ml-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Próxima</button>
                     </div>
                 </div>
             </div>
@@ -151,221 +98,174 @@
     </div>
 
     <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import * as pdfjsLib from 'https://mozilla.github.io/pdf.js/build/pdf.mjs';
 
-        // PDF.js worker setup
+        // --- CONFIGURAÇÃO DO FIREBASE ---
+        // Suas chaves foram inseridas aqui.
+        const firebaseConfig = {
+          apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
+          authDomain: "pdf-extrator.firebaseapp.com",
+          projectId: "pdf-extrator",
+          storageBucket: "pdf-extrator.appspot.com",
+          messagingSenderId: "1083062925751",
+          appId: "1:1083062925751:web:384523e9beb7362bbd5032",
+          measurementId: "G-29B954MXCN"
+        };
+        // --------------------------------
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://mozilla.github.io/pdf.js/build/pdf.worker.mjs`;
         
-        const pdfFileInput = document.getElementById('pdfFile');
-        const fileNameDisplay = document.getElementById('fileName');
-        const extractButton = document.getElementById('extractButton');
-        const progressSection = document.getElementById('progress-section');
-        const estimationInfo = document.getElementById('estimation-info');
-        const progressBar = document.getElementById('progress-bar');
-        const resultsDiv = document.getElementById('results');
-        const loader = document.getElementById('loader');
-        const loaderText = document.getElementById('loader-text');
-        const outputDiv = document.getElementById('output');
-        const errorContainer = document.getElementById('error-container');
-        const errorMessage = document.getElementById('error-message');
-        const prevPageButton = document.getElementById('prev-page');
-        const nextPageButton = document.getElementById('next-page');
-        const downloadExcelButton = document.getElementById('downloadExcelButton');
-
-        const selectors = {
-            idade: document.getElementById('select-idade'),
-            email: document.getElementById('select-email'),
-            contatos: document.getElementById('select-contatos'),
+        const ui = {
+            pdfFileInput: document.getElementById('pdfFile'),
+            fileNameDisplay: document.getElementById('fileName'),
+            extractButton: document.getElementById('extractButton'),
+            progressSection: document.getElementById('progress-section'),
+            queueStatusSection: document.getElementById('queue-status-section'),
+            queuePosition: document.getElementById('queue-position'),
+            progressBar: document.getElementById('progress-bar'),
+            resultsDiv: document.getElementById('results'),
+            outputDiv: document.getElementById('output'),
+            errorContainer: document.getElementById('error-container'),
+            errorMessage: document.getElementById('error-message'),
+            prevPage: document.getElementById('prev-page'),
+            nextPage: document.getElementById('next-page'),
+            pageInfo: document.getElementById('page-info'),
+            paginationControls: document.getElementById('pagination-controls'),
+            downloadExcelButton: document.getElementById('downloadExcelButton'),
+            selectors: {
+                idade: document.getElementById('select-idade'),
+                email: document.getElementById('select-email'),
+                contatos: document.getElementById('select-contatos'),
+            }
         };
 
         let allExtractedData = [];
         let sortState = { key: null, direction: 'asc' };
         let currentSelectedFields = [];
         let currentPage = 1;
-        let estimationInterval = null;
         const ITEMS_PER_PAGE = 10;
+        let unsubscribe = null; // To stop listening to Firestore updates
+        let userId = localStorage.getItem('userId');
+        if (!userId) {
+            userId = 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('userId', userId);
+        }
 
-        pdfFileInput.addEventListener('change', (event) => {
-            const files = event.target.files;
-            if (files.length > 0) {
-                fileNameDisplay.textContent = `${files.length} arquivo(s) selecionado(s).`;
-                extractButton.disabled = false;
-                downloadExcelButton.classList.add('hidden');
-                hideError();
-            } else {
-                fileNameDisplay.textContent = 'Nenhum arquivo selecionado.';
-                extractButton.disabled = true;
+        ui.pdfFileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            ui.fileNameDisplay.textContent = files.length > 0 ? `${files.length} arquivo(s) selecionado(s).` : 'Nenhum arquivo selecionado.';
+            ui.extractButton.disabled = files.length === 0;
+            ui.downloadExcelButton.classList.add('hidden');
+            hideError();
+        });
+
+        ui.extractButton.addEventListener('click', async () => {
+            const files = Array.from(ui.pdfFileInput.files);
+            if (files.length === 0) return showError('Nenhum arquivo selecionado.');
+            
+            resetState();
+            ui.extractButton.disabled = true;
+            ui.queueStatusSection.classList.remove('hidden');
+
+            const jobIds = [];
+
+            for (const file of files) {
+                try {
+                    const text = await extractTextFromPdf(file);
+                    const docRef = await addDoc(collection(db, "processing_queue"), {
+                        userId: userId,
+                        fileName: file.name,
+                        text: text,
+                        selectedFields: currentSelectedFields,
+                        status: 'pending',
+                        createdAt: serverTimestamp()
+                    });
+                    jobIds.push(docRef.id);
+                } catch (err) {
+                    showError(`Falha ao enviar o arquivo ${file.name} para a fila.`);
+                    console.error(err);
+                }
+            }
+
+            if (jobIds.length > 0) {
+                listenForJobUpdates(jobIds);
             }
         });
 
-        extractButton.addEventListener('click', async () => {
-            const files = Array.from(pdfFileInput.files);
-            if (files.length === 0) {
-                showError('Nenhum arquivo selecionado.');
-                return;
-            }
+        function listenForJobUpdates(jobIds) {
+            if (unsubscribe) unsubscribe(); 
+
+            const q = query(collection(db, "processing_queue"), where('__name__', 'in', jobIds));
+
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "modified") {
+                        const job = change.doc.data();
+                        if (job.status === 'completed' && job.result) {
+                            const existingIndex = allExtractedData.findIndex(d => d.fileName === job.fileName);
+                            if (existingIndex === -1) {
+                                allExtractedData.push({ ...job.result, fileName: job.fileName });
+                            }
+                            renderTable();
+                        } else if (job.status === 'failed') {
+                            showError(`Falha ao processar ${job.fileName}: ${job.error}`);
+                        }
+                    }
+                });
+                updateQueueStatus(jobIds);
+            });
+        }
+
+        async function updateQueueStatus(jobIds) {
+            const pendingQuery = query(collection(db, "processing_queue"), where('status', '==', 'pending'), orderBy('createdAt'));
+            const pendingSnapshot = await getDocs(pendingQuery);
+            const pendingJobs = pendingSnapshot.docs.map(doc => doc.id);
+
+            const userPendingJobs = jobIds.filter(id => {
+                const jobData = allExtractedData.find(d => d.jobId === id);
+                return !jobData && pendingJobs.includes(id);
+            });
             
+            const firstPendingJobId = userPendingJobs[0];
+            const position = firstPendingJobId ? pendingJobs.indexOf(firstPendingJobId) + 1 : '-';
+            const totalInQueue = pendingJobs.length;
+            
+            ui.queuePosition.textContent = totalInQueue > 0 ? `Seus arquivos estão na fila. Posição atual: ${position} de ${totalInQueue}.` : 'Processando seus arquivos...';
+
+            const completedJobs = allExtractedData.length;
+            const progress = (completedJobs / jobIds.length) * 100;
+            ui.progressBar.style.width = `${progress}%`;
+
+            if (completedJobs === jobIds.length) {
+                ui.queuePosition.textContent = "Todos os arquivos foram processados!";
+                 if (unsubscribe) {
+                    unsubscribe();
+                    unsubscribe = null;
+                 }
+                 ui.downloadExcelButton.classList.remove('hidden');
+            }
+        }
+
+        function resetState() {
             allExtractedData = [];
             sortState = { key: null, direction: 'asc' };
             currentPage = 1;
-            currentSelectedFields = Object.keys(selectors).filter(key => selectors[key].checked);
-            if (estimationInterval) clearInterval(estimationInterval);
-
-            resultsDiv.classList.remove('hidden');
-            loader.classList.remove('hidden');
-            progressSection.classList.add('hidden');
-            downloadExcelButton.classList.add('hidden');
-            document.getElementById('pagination-controls').classList.add('hidden');
-            extractButton.disabled = true;
+            currentSelectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+            ui.resultsDiv.classList.add('hidden');
+            ui.queueStatusSection.classList.add('hidden');
+            ui.downloadExcelButton.classList.add('hidden');
+            ui.paginationControls.classList.add('hidden');
             hideError();
             setupTable(currentSelectedFields);
-
-            const failedFilesQueue = [];
-
-            // --- PASS 1: Process all files initially ---
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                progressBar.style.width = `${((i + 1) / files.length) * 100}%`;
-                
-                const startTime = performance.now();
-                const text = await extractTextFromPdf(file);
-                const data = await callGeminiAPI(text, currentSelectedFields, i + 1, files.length, false);
-                const endTime = performance.now();
-
-                if (data) {
-                    allExtractedData.push({ ...data, fileName: file.name });
-                } else {
-                    console.warn(`Arquivo ${file.name} falhou na primeira passagem. Adicionando à fila de retentativa.`);
-                    failedFilesQueue.push(file);
-                }
-                
-                if (i === 0 && files.length > 1) {
-                    const duration = endTime - startTime;
-                    const remainingFiles = files.length - 1;
-                    const estimatedTime = duration * remainingFiles;
-                    startEstimationTimer(estimatedTime);
-                }
-            }
-            renderTable();
-
-            // --- PASS 2: Retry files that failed ---
-            if (failedFilesQueue.length > 0) {
-                if (estimationInterval) clearInterval(estimationInterval);
-                estimationInfo.textContent = `Tentando novamente ${failedFilesQueue.length} arquivo(s) que falharam...`;
-                progressSection.classList.remove('hidden');
-                progressBar.style.width = '0%';
-                
-                for (let i = 0; i < failedFilesQueue.length; i++) {
-                    const file = failedFilesQueue[i];
-                    progressBar.style.width = `${((i + 1) / failedFilesQueue.length) * 100}%`;
-
-                    const text = await extractTextFromPdf(file);
-                    const data = await callGeminiAPI(text, currentSelectedFields, i + 1, failedFilesQueue.length, true);
-
-                    if (data) {
-                        allExtractedData.push({ ...data, fileName: file.name });
-                        renderTable();
-                    } else {
-                        const finalErrorMessage = `Falha final ao processar o arquivo ${file.name} após todas as tentativas.`;
-                        console.error(finalErrorMessage);
-                        showError(finalErrorMessage);
-                    }
-                }
-            }
-
-            // --- Final Cleanup ---
-            loader.classList.add('hidden');
-            progressSection.classList.add('hidden');
-            if (estimationInterval) clearInterval(estimationInterval);
-            if (allExtractedData.length > 0) {
-                downloadExcelButton.classList.remove('hidden');
-            }
-            extractButton.disabled = false;
-        });
-        
-        downloadExcelButton.addEventListener('click', () => {
-            if (allExtractedData.length === 0) return;
-
-            const headers = {
-                nome: 'Nome'
-            };
-            if (currentSelectedFields.includes('idade')) headers.idade = 'Idade';
-            if (currentSelectedFields.includes('email')) headers.email = 'E-mail';
-            if (currentSelectedFields.includes('contatos')) headers.contatos = 'Contatos';
-            headers.fileName = 'Arquivo';
-
-            const dataToExport = allExtractedData.map(item => {
-                const row = {};
-                row[headers.nome] = item.nome || 'N/A';
-                if (currentSelectedFields.includes('idade')) {
-                    row[headers.idade] = item.idade > 0 ? item.idade : 'N/A';
-                }
-                if (currentSelectedFields.includes('email')) {
-                    row[headers.email] = item.email || 'N/A';
-                }
-                if (currentSelectedFields.includes('contatos')) {
-                    row[headers.contatos] = item.contatos?.join(', ') || 'N/A';
-                }
-                row[headers.fileName] = item.fileName;
-                return row;
-            });
-            
-            const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "Dados dos Currículos");
-
-            XLSX.writeFile(workbook, "extracao_curriculos.xlsx");
-        });
-
-
-        function startEstimationTimer(initialTime) {
-            progressSection.classList.remove('hidden');
-            let estimationEndTime = Date.now() + initialTime;
-            
-            if (estimationInterval) clearInterval(estimationInterval);
-
-            estimationInterval = setInterval(() => {
-                const remainingTime = estimationEndTime - Date.now();
-                if (remainingTime <= 0) {
-                    estimationInfo.textContent = "Finalizando...";
-                    clearInterval(estimationInterval);
-                } else {
-                    updateEstimationText(remainingTime);
-                }
-            }, 1000);
         }
-
-        function updateEstimationText(timeInMs) {
-            const seconds = Math.round(timeInMs / 1000);
-            let timeString;
-            if (seconds < 60) {
-                timeString = `${seconds} segundos`;
-            } else {
-                const minutes = Math.floor(seconds / 60);
-                const remainingSeconds = seconds % 60;
-                timeString = `${minutes} minuto(s)${remainingSeconds > 0 ? ` e ${remainingSeconds} segundo(s)` : ''}`;
-            }
-            estimationInfo.textContent = `Aguarde, extraindo dados... Tempo restante estimado: ${timeString}.`;
-        }
-
-        prevPageButton.addEventListener('click', () => {
-            if (currentPage > 1) {
-                currentPage--;
-                renderTable();
-            }
-        });
-
-        nextPageButton.addEventListener('click', () => {
-            const totalPages = Math.ceil(allExtractedData.length / ITEMS_PER_PAGE);
-            if (currentPage < totalPages) {
-                currentPage++;
-                renderTable();
-            }
-        });
 
         async function extractTextFromPdf(file) {
+            const fileReader = new FileReader();
             return new Promise((resolve, reject) => {
-                const fileReader = new FileReader();
                 fileReader.onload = async (e) => {
                     try {
                         const typedarray = new Uint8Array(e.target.result);
@@ -374,115 +274,18 @@
                         for (let i = 1; i <= pdf.numPages; i++) {
                             const page = await pdf.getPage(i);
                             const textContent = await page.getTextContent();
-                            const pageText = textContent.items.map(item => item.str).join(' ');
-                            fullText += pageText + '\n\n';
+                            fullText += textContent.items.map(item => item.str).join(' ');
                         }
                         resolve(fullText);
-                    } catch (pdfError) {
-                        reject(pdfError);
-                    }
+                    } catch (err) { reject(err); }
                 };
                 fileReader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
                 fileReader.readAsArrayBuffer(file);
             });
         }
         
-        async function callGeminiAPI(text, selectedFields, fileIndex, totalFiles, isRetry) {
-            const apiUrl = `/api/proxy`;
-            const currentYear = new Date().getFullYear();
-            const maxRetries = 5;
-            let delay = 2000;
-
-            const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
-
-REGRAS CRÍTICAS DE EXTRAÇÃO:
-1.  **NOME**: Extraia o nome completo que geralmente aparece no topo. SEMPRE formate o nome para que a primeira letra de cada palavra seja maiúscula, exceto para conectivos como "de", "da", "do", "dos" que devem ser minúsculos. Exemplo: "RAQUEL DE OLIVEIRA SILVA" deve se tornar "Raquel de Oliveira Silva".
-2.  **IDADE**:
-    - PRIMEIRO, procure por um número seguido diretamente pela palavra "anos" (ex: "37 anos").
-    - SE NÃO ENCONTRAR, procure por uma data de nascimento (DD/MM/AAAA) e calcule a idade (ano atual: ${currentYear}).
-    - Se nenhum método funcionar, retorne 0.
-3.  **CONTATOS**:
-    - Extraia TODOS os números de telefone. Preste atenção em números próximos a "WhatsApp", "Celular", "Fone".
-    - Ignore outros números que não sejam telefones (ex: datas de experiência).
-4.  **EMAIL**: Encontre o e-mail, que sempre contém "@".
-5.  **FORMATAÇÃO DE CONTATO**: Todos os números de telefone devem ser formatados para o padrão (DD) 9 XXXX-XXXX. Se não tiver 9 dígitos no corpo, use (DD) XXXX-XXXX.
-6.  **SAÍDA**: Responda APENAS com o objeto JSON, sem nenhum texto extra. Siga o esquema JSON rigorosamente.`;
-            
-            const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
-            
-            const properties = { nome: { type: "STRING", description: "O nome completo do candidato, formatado." } };
-            const required = ["nome"];
-
-            if (selectedFields.includes('idade')) {
-                properties.idade = { type: "NUMBER", description: "A idade do candidato. Retorne 0 se não encontrada." };
-                required.push('idade');
-            }
-            if (selectedFields.includes('email')) {
-                properties.email = { type: "STRING", description: "O e-mail do candidato. Retorne string vazia se não encontrado." };
-                required.push('email');
-            }
-            if (selectedFields.includes('contatos')) {
-                properties.contatos = { type: "ARRAY", description: "Lista de telefones formatados para (DD) 9 XXXX-XXXX.", items: { type: "STRING" } };
-                required.push('contatos');
-            }
-
-            const payload = {
-                contents: [{ parts: [{ text: userPrompt }] }],
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: { type: "OBJECT", properties, required }
-                }
-            };
-            
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const messagePrefix = isRetry ? `(Retentativa)` : '';
-                loaderText.textContent = `${messagePrefix} Analisando arquivo ${fileIndex} de ${totalFiles}...`;
-
-                try {
-                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    
-                    if (response.ok) {
-                        const result = await response.json();
-                        const candidate = result.candidates?.[0];
-                        if (candidate?.content?.parts?.[0]?.text) {
-                            return JSON.parse(candidate.content.parts[0].text);
-                        }
-                        throw new Error('Resposta da API bem-sucedida, mas com conteúdo inválido.');
-                    }
-
-                    if (response.status === 429 || response.status === 503) {
-                        if (attempt === maxRetries) {
-                            console.error(`API Error: ${response.status} na tentativa final.`);
-                            return null;
-                        }
-                        const jitter = Math.random() * 1000;
-                        const waitTime = delay + jitter;
-                        console.warn(`Congestionamento da API (status ${response.status}). Tentando novamente em ${(waitTime / 1000).toFixed(1)}s... (Tentativa ${attempt}/${maxRetries})`);
-                        loaderText.textContent = `Congestionamento da API. Tentando novamente em ${(waitTime / 1000).toFixed(1)}s...`;
-                        await new Promise(resolve => setTimeout(resolve, waitTime));
-                        delay *= 2;
-                    } else {
-                        console.error(`API Error: ${response.status}. Falha imediata.`);
-                        return null;
-                    }
-                } catch (error) {
-                    if (attempt === maxRetries) {
-                        console.error(`Erro final de rede ou processamento:`, error);
-                        return null;
-                    }
-                    const jitter = Math.random() * 1000;
-                    const waitTime = delay + jitter;
-                    console.warn(`Erro de rede. Tentando novamente em ${(waitTime / 1000).toFixed(1)}s... (Tentativa ${attempt}/${maxRetries})`);
-                    loaderText.textContent = `Erro de rede. Tentando novamente...`;
-                    await new Promise(resolve => setTimeout(resolve, waitTime));
-                    delay *= 2;
-                }
-            }
-            return null;
-        }
-
-
+        // --- Funções de UI (Tabela, Paginação, etc.) ---
+        
         function setupTable(selectedFields) {
             const headers = [
                 { key: 'nome', label: 'Nome', sortable: true },
@@ -499,7 +302,7 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
                 return `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h.label}</th>`;
             }).join('');
 
-            outputDiv.innerHTML = `
+            ui.outputDiv.innerHTML = `
                 <div class="overflow-x-auto border border-gray-200 rounded-lg">
                     <table class="min-w-full bg-white">
                         <thead class="bg-gray-50">
@@ -513,12 +316,8 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
             document.querySelectorAll('.sortable-header').forEach(header => {
                 header.addEventListener('click', () => {
                     const key = header.dataset.sortKey;
-                    if (sortState.key === key) {
-                        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
-                    } else {
-                        sortState.key = key;
-                        sortState.direction = 'asc';
-                    }
+                    sortState.direction = (sortState.key === key && sortState.direction === 'asc') ? 'desc' : 'asc';
+                    sortState.key = key;
                     currentPage = 1;
                     renderTable();
                 });
@@ -526,115 +325,82 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
         }
         
         function sortData() {
+            if (!sortState.key) return;
             const { key, direction } = sortState;
-            if (!key) return;
-
+            const factor = direction === 'asc' ? 1 : -1;
             allExtractedData.sort((a, b) => {
-                let valA = a[key];
-                let valB = b[key];
-                const factor = direction === 'asc' ? 1 : -1;
-
-                // Priority sorting for specific columns
+                let valA = a[key], valB = b[key];
                 if (key === 'idade') {
-                    const aHasAge = valA > 0;
-                    const bHasAge = valB > 0;
-                    if (aHasAge && !bHasAge) return -1;
-                    if (!aHasAge && bHasAge) return 1;
+                    const aHas = valA > 0, bHas = valB > 0;
+                    if (aHas !== bHas) return aHas ? -1 : 1;
                     return (valA - valB) * factor;
                 }
-                if (key === 'email') {
-                    const aHasEmail = valA && valA.length > 0;
-                    const bHasEmail = valB && valB.length > 0;
-                    if (aHasEmail && !bHasEmail) return -1;
-                    if (!aHasEmail && bHasEmail) return 1;
+                if (key === 'email' || key === 'contatos') {
+                    const aHas = valA && valA.length > 0, bHas = valB && valB.length > 0;
+                    if (aHas !== bHas) return aHas ? -1 : 1;
                 }
-                if (key === 'contatos') {
-                    const aHasContatos = valA && Array.isArray(valA) && valA.length > 0;
-                    const bHasContatos = valB && Array.isArray(valB) && valB.length > 0;
-                    if (aHasContatos && !bHasContatos) return -1;
-                    if (!aHasContatos && bHasContatos) return 1;
-                }
-
-                // Default string/number sort
-                if (typeof valA === 'string') {
-                    return valA.localeCompare(valB) * factor;
-                }
-                if (typeof valA === 'number') {
-                    return (valA - valB) * factor;
-                }
+                if (typeof valA === 'string') return valA.localeCompare(valB) * factor;
+                if (typeof valA === 'number') return (valA - valB) * factor;
                 return 0;
             });
         }
 
         function renderTable() {
+            ui.resultsDiv.classList.remove('hidden');
             sortData();
-
             const tableBody = document.querySelector('#output tbody');
             if (!tableBody) return;
-            
-            tableBody.innerHTML = ''; // Clear existing rows
-
-            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-            const endIndex = startIndex + ITEMS_PER_PAGE;
-            const paginatedData = allExtractedData.slice(startIndex, endIndex);
-
+            tableBody.innerHTML = '';
+            const paginatedData = allExtractedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
             paginatedData.forEach(data => {
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50';
-
-                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'Não encontrado'}</td>`;
-
-                if (currentSelectedFields.includes('idade')) {
-                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
-                }
-                if (currentSelectedFields.includes('email')) {
-                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
-                }
-                if (currentSelectedFields.includes('contatos')) {
-                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
-                }
-                
+                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'N/A'}</td>`;
+                if (currentSelectedFields.includes('idade')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
+                if (currentSelectedFields.includes('email')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
+                if (currentSelectedFields.includes('contatos')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
                 cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
-
                 row.innerHTML = cells;
                 tableBody.appendChild(row);
             });
-            
-            document.querySelectorAll('.sortable-header').forEach(header => {
-                header.classList.remove('sorted', 'asc', 'desc');
-                if (header.dataset.sortKey === sortState.key) {
-                    header.classList.add('sorted', sortState.direction);
-                }
+            document.querySelectorAll('.sortable-header').forEach(h => {
+                h.classList.toggle('sorted', h.dataset.sortKey === sortState.key);
+                h.classList.toggle('asc', h.dataset.sortKey === sortState.key && sortState.direction === 'asc');
+                h.classList.toggle('desc', h.dataset.sortKey === sortState.key && sortState.direction === 'desc');
             });
-
             renderPaginationControls();
         }
 
         function renderPaginationControls() {
-            const pageInfo = document.getElementById('page-info');
-            const paginationControls = document.getElementById('pagination-controls');
-            const totalItems = allExtractedData.length;
-            const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-
-            if (totalPages <= 1) {
-                paginationControls.classList.add('hidden');
-                return;
-            }
-
-            paginationControls.classList.remove('hidden');
-            pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
-            prevPageButton.disabled = currentPage === 1;
-            nextPageButton.disabled = currentPage === totalPages;
+            const totalPages = Math.ceil(allExtractedData.length / ITEMS_PER_PAGE);
+            if (totalPages <= 1) return ui.paginationControls.classList.add('hidden');
+            ui.paginationControls.classList.remove('hidden');
+            ui.pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
+            ui.prevPage.disabled = currentPage === 1;
+            ui.nextPage.disabled = currentPage === totalPages;
         }
 
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorContainer.classList.remove('hidden');
-        }
+        ui.prevPage.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderTable(); } });
+        ui.nextPage.addEventListener('click', () => { if (currentPage < Math.ceil(allExtractedData.length / ITEMS_PER_PAGE)) { currentPage++; renderTable(); } });
+        
+        ui.downloadExcelButton.addEventListener('click', () => {
+            const dataToExport = allExtractedData.map(item => {
+                const row = { Nome: item.nome || 'N/A' };
+                if (currentSelectedFields.includes('idade')) row.Idade = item.idade > 0 ? item.idade : 'N/A';
+                if (currentSelectedFields.includes('email')) row['E-mail'] = item.email || 'N/A';
+                if (currentSelectedFields.includes('contatos')) row.Contatos = item.contatos?.join(', ') || 'N/A';
+                row.Arquivo = item.fileName;
+                return row;
+            });
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Dados");
+            XLSX.writeFile(wb, "extracao_curriculos.xlsx");
+        });
 
-        function hideError() {
-            errorContainer.classList.add('hidden');
-        }
+        function showError(message) { ui.errorMessage.textContent = message; ui.errorContainer.classList.remove('hidden'); }
+        function hideError() { ui.errorContainer.classList.add('hidden'); }
+
     </script>
 </body>
 </html>
