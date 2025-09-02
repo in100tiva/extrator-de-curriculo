@@ -29,11 +29,15 @@ async function triggerNextJob(userId, host) {
         // Aguarda o despacho da requisição para o próximo job antes de finalizar.
         try {
             const protocol = host.includes('localhost') ? 'http' : 'https';
-            await fetch(`${protocol}://${host}/api/process-job`, {
+            const res = await fetch(`${protocol}://${host}/api/process-job`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ jobId: nextJobId, userId: userId })
             });
+            const resText = await res.text().catch(() => '');
+            if (!res.ok) {
+                console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${resText}`);
+            }
         } catch (err) {
             console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
             // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
