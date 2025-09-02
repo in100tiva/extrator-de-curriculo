@@ -4,36 +4,42 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 let db;
 let initError = null;
 
-// --- INICIALIZAÇÃO ROBUSTA ---
-// Este bloco de código é executado apenas uma vez quando a função é iniciada.
+// --- INICIALIZAÇÃO ROBUSTA COM LOGS DE DEBUG ---
 try {
-    console.log("Lendo as variáveis de ambiente...");
+    console.log("[DEBUG] Iniciando a inicialização da função...");
+
+    console.log("[DEBUG] Lendo as variáveis de ambiente...");
     const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!serviceAccountKey) throw new Error("Variável de ambiente 'GOOGLE_SERVICE_ACCOUNT_KEY' não encontrada.");
     if (!apiKey) throw new Error("Variável de ambiente 'GEMINI_API_KEY' não encontrada.");
     
-    console.log("Variáveis lidas com sucesso.");
+    console.log("[DEBUG] Variáveis de ambiente lidas com sucesso.");
 
     let serviceAccount;
     try {
+        console.log("[DEBUG] Analisando o JSON da chave de serviço...");
         serviceAccount = JSON.parse(serviceAccountKey);
+        console.log("[DEBUG] JSON da chave de serviço analisado com sucesso.");
     } catch (e) {
         throw new Error("Falha ao analisar o JSON da 'GOOGLE_SERVICE_ACCOUNT_KEY'. Verifique se o conteúdo foi copiado corretamente.");
     }
 
     if (!getApps().length) {
-        console.log("Inicializando o Firebase Admin SDK...");
+        console.log("[DEBUG] Nenhuma aplicação Firebase encontrada. Inicializando o Firebase Admin SDK...");
         initializeApp({
             credential: cert(serviceAccount)
         });
-        console.log("Firebase Admin SDK inicializado com sucesso.");
+        console.log("[DEBUG] Firebase Admin SDK inicializado com sucesso.");
+    } else {
+        console.log("[DEBUG] Aplicação Firebase já existe. Reutilizando a instância.");
     }
+    
     db = getFirestore();
+    console.log("[DEBUG] Conexão com o Firestore estabelecida.");
 
 } catch (error) {
-    // Armazena o erro de inicialização para que possa ser retornado em cada requisição
     console.error("ERRO CRÍTICO DURANTE A INICIALIZAÇÃO:", error.message);
     initError = error.message;
 }
@@ -41,8 +47,8 @@ try {
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default async function handler(request, response) {
-    // Se a inicialização falhou, retorna um erro claro em todas as chamadas
     if (initError) {
+        console.error("[HANDLER ERROR] A inicialização falhou, retornando erro 500.");
         return response.status(500).json({ error: `Erro de configuração do servidor: ${initError}` });
     }
     if (request.method !== 'POST') {
@@ -54,9 +60,10 @@ export default async function handler(request, response) {
         return response.status(400).send('User ID is required.');
     }
 
-    console.log(`Worker iniciado para o usuário: ${userId}`);
+    console.log(`[HANDLER] Worker iniciado para o usuário: ${userId}`);
     response.status(202).send('Processing started.');
 
+    let jobCount = 0;
     while (true) {
         const queueRef = db.collection('processing_queue');
         const snapshot = await queueRef
@@ -67,24 +74,29 @@ export default async function handler(request, response) {
             .get();
 
         if (snapshot.empty) {
-            console.log(`Fila vazia para o usuário ${userId}. Worker finalizando.`);
+            console.log(`[HANDLER] Fila vazia para o usuário ${userId} após processar ${jobCount} trabalho(s). Worker finalizando.`);
             break; 
         }
 
+        jobCount++;
         const jobDoc = snapshot.docs[0];
         const jobId = jobDoc.id;
         const jobData = jobDoc.data();
 
         try {
+            console.log(`[JOB ${jobId}] Iniciando processamento...`);
             await jobDoc.ref.update({ status: 'processing', startedAt: Timestamp.now() });
             const result = await callGeminiAPI(jobData.text, jobData.selectedFields);
 
             if (result.success) {
                 await jobDoc.ref.update({ status: 'completed', finishedAt: Timestamp.now(), result: result.data });
+                console.log(`[JOB ${jobId}] Concluído com sucesso.`);
             } else {
                 await jobDoc.ref.update({ status: 'failed', finishedAt: Timestamp.now(), error: result.error });
+                console.error(`[JOB ${jobId}] Falhou: ${result.error}`);
             }
         } catch (error) {
+            console.error(`[JOB ${jobId}] Erro inesperado no worker:`, error);
             await jobDoc.ref.update({ status: 'failed', error: 'Erro interno do worker.' });
         }
         await sleep(1500);
@@ -97,8 +109,22 @@ async function callGeminiAPI(text, selectedFields) {
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const currentYear = new Date().getFullYear();
     
-    const systemPrompt = `Você é um assistente de RH...`; // Prompt completo omitido para brevidade
-    const userPrompt = `Extraia as informações do seguinte texto de currículo...\n${text}`;
+    const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
+
+REGRAS CRÍTICAS DE EXTRAÇÃO:
+1.  **NOME**: Extraia o nome completo que geralmente aparece no topo. SEMPRE formate o nome para que a primeira letra de cada palavra seja maiúscula, exceto para conectivos como "de", "da", "do", "dos" que devem ser minúsculos. Exemplo: "RAQUEL DE OLIVEIRA SILVA" deve se tornar "Raquel de Oliveira Silva".
+2.  **IDADE**:
+    - PRIMEIRO, procure por um número seguido diretamente pela palavra "anos" (ex: "37 anos").
+    - SE NÃO ENCONTRAR, procure por uma data de nascimento (DD/MM/AAAA) e calcule a idade (ano atual: ${currentYear}).
+    - Se nenhum método funcionar, retorne 0.
+3.  **CONTATOS**:
+    - Extraia TODOS os números de telefone. Preste atenção em números próximos a "WhatsApp", "Celular", "Fone".
+    - Ignore outros números que não sejam telefones (ex: datas de experiência).
+4.  **EMAIL**: Encontre o e-mail, que sempre contém "@".
+5.  **FORMATAÇÃO DE CONTATO**: Todos os números de telefone devem ser formatados para o padrão (DD) 9 XXXX-XXXX. Se não tiver 9 dígitos no corpo, use (DD) XXXX-XXXX.
+6.  **SAÍDA**: Responda APENAS com o objeto JSON, sem nenhum texto extra. Siga o esquema JSON rigorosamente.`;
+    
+    const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
     
     const properties = { nome: { type: "STRING" } };
     const required = ["nome"];
@@ -106,10 +132,22 @@ async function callGeminiAPI(text, selectedFields) {
     if (selectedFields.includes('email')) { properties.email = { type: "STRING" }; required.push('email'); }
     if (selectedFields.includes('contatos')) { properties.contatos = { type: "ARRAY", items: { type: "STRING" } }; required.push('contatos'); }
 
-    const payload = { /* ... */ }; // Payload completo omitido para brevidade
+    const payload = {
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: { type: "OBJECT", properties, required }
+        }
+    };
 
     try {
-        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const response = await fetch(apiUrl, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+        });
+
         if (!response.ok) {
             const errorBody = await response.json();
             throw new Error(`API retornou status ${response.status}: ${errorBody.error?.message || 'Erro desconhecido'}`);
