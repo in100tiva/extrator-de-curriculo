@@ -5,12 +5,25 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 const apiKey = process.env.GEMINI_API_KEY;
 
-// Verificação robusta para garantir que as credenciais existem
+// Verificação robusta que PARA a execução se as chaves não existirem
 if (!serviceAccountKey || !apiKey) {
-    console.error("ERRO CRÍTICO: Variáveis de ambiente GOOGLE_SERVICE_ACCOUNT_KEY ou GEMINI_API_KEY não estão configuradas na Vercel.");
+    const errorMsg = "ERRO CRÍTICO: Variáveis de ambiente GOOGLE_SERVICE_ACCOUNT_KEY ou GEMINI_API_KEY não estão configuradas corretamente na Vercel.";
+    console.error(errorMsg);
+    // Lança um erro para impedir que a função seja definida com configuração inválida.
+    // Isso resultará em um 500, mas o log da Vercel mostrará EXATAMENTE essa mensagem.
+    throw new Error(errorMsg);
 }
 
-const serviceAccount = JSON.parse(serviceAccountKey || '{}');
+// Tenta parsear a chave de serviço, com um try-catch para o caso de o JSON ser inválido
+let serviceAccount;
+try {
+    serviceAccount = JSON.parse(serviceAccountKey);
+} catch (e) {
+    const errorMsg = "ERRO CRÍTICO: O conteúdo da variável GOOGLE_SERVICE_ACCOUNT_KEY não é um JSON válido.";
+    console.error(errorMsg, e);
+    throw new Error(errorMsg);
+}
+
 
 // Evita reinicialização do app em cada chamada (otimização da Vercel)
 if (!getApps().length) {
@@ -97,7 +110,7 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
 1.  **NOME**: Extraia o nome completo que geralmente aparece no topo. SEMPRE formate o nome para que a primeira letra de cada palavra seja maiúscula, exceto para conectivos como "de", "da", "do", "dos" que devem ser minúsculos. Exemplo: "RAQUEL DE OLIVEIRA SILVA" deve se tornar "Raquel de Oliveira Silva".
 2.  **IDADE**:
     - PRIMEIRO, procure por um número seguido diretamente pela palavra "anos" (ex: "37 anos").
-    - SE NÃO ENCONTRAR, procure por uma data de nascimento (DD/MM/AAAA) e calcule a idade (ano atual: ${currentYear}).
+    - SE NÃO ENCONTRar, procure por uma data de nascimento (DD/MM/AAAA) e calcule a idade (ano atual: ${currentYear}).
     - Se nenhum método funcionar, retorne 0.
 3.  **CONTATOS**:
     - Extraia TODOS os números de telefone. Preste atenção em números próximos a "WhatsApp", "Celular", "Fone".
