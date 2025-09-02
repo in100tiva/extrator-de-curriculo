@@ -79,31 +79,30 @@ export default async function handler(request, response) {
  * Remove jobs antigos (completed/failed) para evitar acúmulo
  */
 async function cleanupOldJobs(userId) {
-    const oneDayAgo = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
-    
     try {
-        // Busca jobs completed/failed antigos
-        const oldJobsSnapshot = await db.collection('processing_queue')
+        // CORREÇÃO: Query simples sem índice composto
+        // Busca jobs do usuário primeiro, depois filtra por data
+        const userJobsSnapshot = await db.collection('processing_queue')
             .where('userId', '==', userId)
-            .where('finishedAt', '<=', oneDayAgo)
-            .limit(50) // Limita para não sobrecarregar
+            .limit(100) // Limita para não sobrecarregar
             .get();
 
-        if (oldJobsSnapshot.empty) {
+        if (userJobsSnapshot.empty) {
             return { deleted: 0 };
         }
 
-        console.log(`[CLEANUP-OLD] Encontrados ${oldJobsSnapshot.size} jobs antigos para remoção`);
-
-        // Remove em lotes para evitar timeout
+        const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
         const batch = db.batch();
         let deleteCount = 0;
 
-        oldJobsSnapshot.docs.forEach(doc => {
+        userJobsSnapshot.docs.forEach(doc => {
             const jobData = doc.data();
             
-            // Só remove se realmente finalizou (completed ou failed)
-            if (jobData.status === 'completed' || jobData.status === 'failed') {
+            // Verifica se é antigo e finalizado
+            if ((jobData.status === 'completed' || jobData.status === 'failed') && 
+                jobData.finishedAt && 
+                jobData.finishedAt.toMillis() < oneDayAgo) {
+                
                 batch.delete(doc.ref);
                 deleteCount++;
                 console.log(`[CLEANUP-OLD] Agendando remoção: ${doc.id} (${jobData.status})`);
@@ -213,68 +212,51 @@ async function findPendingJobs(userId, limit = 3) {
 }
 
 /**
- * Dispara múltiplos jobs com delay escalonado
+ * Dispara múltiplos jobs de forma assíncrona (fire-and-forget)
  */
-async function triggerMultipleJobs(jobs, userId) {
+async function triggerMultipleJobsAsync(jobs, userId) {
+    console.log(`[TRIGGER-ASYNC] Disparando ${jobs.length} job(s) em background...`);
+    
+    const baseUrl = getBaseUrl();
     const results = [];
-    
-    console.log(`[TRIGGER-MULTIPLE] Disparando ${jobs.length} job(s) com delay escalonado...`);
-    
-    // Dispara jobs com delay de 1 segundo entre cada um
+
+    // Dispara TODOS os jobs imediatamente (fire-and-forget)
     for (let i = 0; i < jobs.length; i++) {
         const job = jobs[i];
+        console.log(`[TRIGGER-ASYNC] Disparando job ${i + 1}/${jobs.length}: ${job.id}`);
         
-        // Delay antes de disparar (exceto o primeiro)
-        if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-        console.log(`[TRIGGER-MULTIPLE] Disparando job ${i + 1}/${jobs.length}: ${job.id} (${job.data.fileName})`);
-        
-        try {
-            const baseUrl = getBaseUrl();
-            
-            // Timeout de 5 segundos para o disparo (não para o processamento)
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
-            
-            const response = await fetch(`${baseUrl}/api/process-job`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'vercel-function'
-                },
-                body: JSON.stringify({ jobId: job.id, userId }),
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-                console.log(`[TRIGGER-MULTIPLE] ✅ Job ${job.id} disparado com sucesso`);
-                results.push({ success: true, jobId: job.id });
-            } else {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-        } catch (error) {
-            console.error(`[TRIGGER-MULTIPLE] ❌ Erro ao disparar job ${job.id}:`, error);
-            
-            // Marca job como failed para não travar a fila
+        // Fire-and-forget com delay escalonado
+        setTimeout(async () => {
             try {
-                await db.collection('processing_queue').doc(job.id).update({
-                    status: 'failed',
-                    finishedAt: Timestamp.now(),
-                    error: `Falha no disparo: ${error.message}`,
-                    triggerFailed: true
+                const response = await fetch(`${baseUrl}/api/process-single`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobId: job.id, userId }),
                 });
-                console.log(`[TRIGGER-MULTIPLE] Job ${job.id} marcado como failed`);
-            } catch (updateError) {
-                console.error(`[TRIGGER-MULTIPLE] Erro ao marcar job como failed:`, updateError);
+                
+                if (response.ok) {
+                    console.log(`[TRIGGER-ASYNC] ✅ Job ${job.id} processado em background`);
+                } else {
+                    console.error(`[TRIGGER-ASYNC] ❌ Job ${job.id} falhou: HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error(`[TRIGGER-ASYNC] ❌ Erro no job ${job.id}:`, error.message);
+                
+                // Marca como failed para não travar
+                try {
+                    await db.collection('processing_queue').doc(job.id).update({
+                        status: 'failed',
+                        finishedAt: Timestamp.now(),
+                        error: `Disparo assíncrono falhou: ${error.message}`
+                    });
+                } catch (updateError) {
+                    console.error(`[TRIGGER-ASYNC] Erro ao marcar como failed:`, updateError);
+                }
             }
-            
-            results.push({ success: false, jobId: job.id, error: error.message });
-        }
+        }, i * 3000); // 3 segundos entre cada job (mais tempo para evitar sobrecarga)
+        
+        // Marca como "disparado" para retorno imediato
+        results.push({ success: true, jobId: job.id });
     }
     
     return results;
