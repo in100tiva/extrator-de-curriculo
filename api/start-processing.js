@@ -2,8 +2,15 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // As credenciais são lidas das variáveis de ambiente da Vercel
-const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
+const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 const apiKey = process.env.GEMINI_API_KEY;
+
+// Verificação robusta para garantir que as credenciais existem
+if (!serviceAccountKey || !apiKey) {
+    console.error("ERRO CRÍTICO: Variáveis de ambiente GOOGLE_SERVICE_ACCOUNT_KEY ou GEMINI_API_KEY não estão configuradas na Vercel.");
+}
+
+const serviceAccount = JSON.parse(serviceAccountKey || '{}');
 
 // Evita reinicialização do app em cada chamada (otimização da Vercel)
 if (!getApps().length) {
@@ -35,7 +42,6 @@ export default async function handler(request, response) {
     // --- LÓGICA DO LOOP DO WORKER ---
     while (true) {
         const queueRef = db.collection('processing_queue');
-        // Esta consulta requer o índice composto que você irá criar no Firebase
         const snapshot = await queueRef
             .where('userId', '==', userId)
             .where('status', '==', 'pending')
@@ -45,7 +51,7 @@ export default async function handler(request, response) {
 
         if (snapshot.empty) {
             console.log(`Fila vazia para o usuário ${userId}. Worker finalizando.`);
-            break; // Sai do loop se não houver mais arquivos pendentes
+            break; 
         }
 
         const jobDoc = snapshot.docs[0];
@@ -55,7 +61,6 @@ export default async function handler(request, response) {
 
         try {
             await currentJobRef.update({ status: 'processing', startedAt: Timestamp.now() });
-
             const result = await callGeminiAPI(jobData.text, jobData.selectedFields);
 
             if (result.success) {
@@ -73,8 +78,6 @@ export default async function handler(request, response) {
                 console.error(`Não foi possível atualizar o status do job ${jobId} para falho.`, updateError);
             }
         }
-
-        // Pausa de 1 segundo para respeitar a API do Gemini
         await sleep(1000);
     }
 }
