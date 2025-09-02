@@ -39,6 +39,20 @@ export default async function handler(request, response) {
             console.log(`[START] Jobs travados resetados.`);
         }
 
+        // Remove jobs já concluídos ou falhos para evitar acúmulo na fila
+        for (const status of ['completed', 'failed']) {
+            const doneSnapshot = await queueRef
+                .where('userId', '==', userId)
+                .where('status', '==', status)
+                .get();
+            if (!doneSnapshot.empty) {
+                console.log(`[START] ${doneSnapshot.size} job(s) com status '${status}' removido(s).`);
+                const batch = db.batch();
+                doneSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+        }
+
         // Procede para encontrar o primeiro job pendente
         const snapshot = await queueRef
             .where('userId', '==', userId)
@@ -55,22 +69,24 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // **CORREÇÃO APLICADA**
-        // Aciona o trabalhador e AGUARDA o despacho da requisição.
-        try {
-            const host = request.headers.host;
-            const protocol = host.includes('localhost') ? 'http' : 'https';
-            await fetch(`${protocol}://${host}/api/process-job`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: firstJobId, userId: userId })
+        // Dispara o trabalhador e libera o evento antes de encerrar a função.
+        const host = request.headers.host;
+        const protocol = host.includes('localhost') ? 'http' : 'https';
+        fetch(`${protocol}://${host}/api/process-job`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId: firstJobId, userId })
+        })
+            .then(async res => {
+                const resText = await res.text().catch(() => '');
+                if (!res.ok) console.error(`[START] process-job retornou ${res.status}: ${resText}`);
+            })
+            .catch(err => {
+                console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
             });
-        } catch (err) {
-            console.error(`[START] Erro CRÍTICO ao acionar o process-job para ${firstJobId}:`, err);
-            // Se o disparo inicial falhar, não adianta continuar.
-            return response.status(500).send('Failed to trigger the processing job.');
-        }
 
+        // Garante que o fetch seja despachado antes do término do runtime.
+        await new Promise(res => setImmediate(res));
         response.status(202).send('Processing has been initiated.');
 
     } catch (error) {
