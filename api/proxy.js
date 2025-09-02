@@ -1,6 +1,9 @@
 // As credenciais são lidas das variáveis de ambiente da Vercel
 const apiKey = process.env.GEMINI_API_KEY;
 
+// Função para pausar a execução
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Função handler da Vercel
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
@@ -19,9 +22,56 @@ export default async function handler(request, response) {
 
         const model = "gemini-2.5-flash-preview-05-20";
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const currentYear = new Date().getFullYear();
+        
+        // --- LÓGICA DE RETENTATIVA COM ESPERA EXPONENCIAL ---
+        let geminiResponse;
+        let lastError;
+        const maxRetries = 5;
+        let delay = 1000; // Começa com 1 segundo
 
-        const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            geminiResponse = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(createPayload(text, selectedFields))
+            });
+
+            if (geminiResponse.ok) {
+                const data = await geminiResponse.json();
+                const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (candidateText) {
+                    return response.status(200).json(JSON.parse(candidateText));
+                } else {
+                    lastError = 'Resposta da API inválida.';
+                    // Continua para tentar novamente se a resposta for vazia mas o status for OK
+                }
+            } else if (geminiResponse.status === 429) {
+                lastError = `Limite de requisições da API atingido (status ${geminiResponse.status}).`;
+                console.log(`${lastError} Tentativa ${attempt}/${maxRetries}. Aguardando ${delay}ms...`);
+                await sleep(delay);
+                delay *= 2; // Dobra o tempo de espera
+                continue; // Tenta novamente
+            } else {
+                // Para outros erros (400, 500, etc.), falha imediatamente
+                const errorData = await geminiResponse.json();
+                console.error('Gemini API Error:', errorData);
+                return response.status(geminiResponse.status).json({ error: errorData.error?.message || 'Falha na API do Gemini' });
+            }
+        }
+        
+        // Se todas as tentativas falharem
+        console.error('Falha ao chamar a API do Gemini após múltiplas tentativas:', lastError);
+        return response.status(500).json({ error: `Falha após ${maxRetries} tentativas. Último erro: ${lastError}` });
+
+    } catch (error) {
+        console.error('Proxy Error:', error);
+        return response.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+}
+
+function createPayload(text, selectedFields) {
+    const currentYear = new Date().getFullYear();
+    const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
 
 REGRAS CRÍTICAS DE EXTRAÇÃO:
 1.  **NOME**: Extraia o nome completo que geralmente aparece no topo. SEMPRE formate o nome para que a primeira letra de cada palavra seja maiúscula, exceto para conectivos como "de", "da", "do", "dos" que devem ser minúsculos. Exemplo: "RAQUEL DE OLIVEIRA SILVA" deve se tornar "Raquel de Oliveira Silva".
@@ -35,47 +85,22 @@ REGRAS CRÍTICAS DE EXTRAÇÃO:
 4.  **EMAIL**: Encontre o e-mail, que sempre contém "@".
 5.  **FORMATAÇÃO DE CONTATO**: Todos os números de telefone devem ser formatados para o padrão (DD) 9 XXXX-XXXX. Se não tiver 9 dígitos no corpo, use (DD) XXXX-XXXX.
 6.  **SAÍDA**: Responda APENAS com o objeto JSON, sem nenhum texto extra. Siga o esquema JSON rigorosamente.`;
-        
-        const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
-        
-        const properties = { nome: { type: "STRING" } };
-        const required = ["nome"];
-        if (selectedFields.includes('idade')) { properties.idade = { type: "NUMBER" }; required.push('idade'); }
-        if (selectedFields.includes('email')) { properties.email = { type: "STRING" }; required.push('email'); }
-        if (selectedFields.includes('contatos')) { properties.contatos = { type: "ARRAY", items: { type: "STRING" } }; required.push('contatos'); }
+    
+    const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
+    
+    const properties = { nome: { type: "STRING" } };
+    const required = ["nome"];
+    if (selectedFields.includes('idade')) { properties.idade = { type: "NUMBER" }; required.push('idade'); }
+    if (selectedFields.includes('email')) { properties.email = { type: "STRING" }; required.push('email'); }
+    if (selectedFields.includes('contatos')) { properties.contatos = { type: "ARRAY", items: { type: "STRING" } }; required.push('contatos'); }
 
-        const payload = {
-            contents: [{ parts: [{ text: userPrompt }] }],
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: { type: "OBJECT", properties, required }
-            }
-        };
-
-        const geminiResponse = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        const data = await geminiResponse.json();
-
-        if (!geminiResponse.ok) {
-            console.error('Gemini API Error:', data);
-            return response.status(geminiResponse.status).json({ error: data.error?.message || 'Falha na API do Gemini' });
+    return {
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: { type: "OBJECT", properties, required }
         }
-
-        const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!candidateText) {
-             return response.status(500).json({ error: 'Resposta da API inválida.' });
-        }
-        
-        return response.status(200).json(JSON.parse(candidateText));
-
-    } catch (error) {
-        console.error('Proxy Error:', error);
-        return response.status(500).json({ error: 'Erro interno do servidor.' });
-    }
+    };
 }
 
