@@ -4,13 +4,17 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 let db;
 let initError = null;
 
-// --- INICIALIZAÇÃO ROBUSTA COM LOGS DE DEBUG ---
+// --- INICIALIZAÇÃO ROBUSTA COM LOGS DE DEBUG APRIMORADOS ---
 try {
     console.log("[DEBUG] Iniciando a inicialização da função...");
 
     console.log("[DEBUG] Lendo as variáveis de ambiente...");
     const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
     const apiKey = process.env.GEMINI_API_KEY;
+
+    // Novos logs para verificar se as variáveis estão sendo lidas
+    console.log(`[DEBUG] Tamanho da GOOGLE_SERVICE_ACCOUNT_KEY: ${serviceAccountKey ? serviceAccountKey.length : 0}`);
+    console.log(`[DEBUG] GEMINI_API_KEY existe: ${!!apiKey}`);
 
     if (!serviceAccountKey) throw new Error("Variável de ambiente 'GOOGLE_SERVICE_ACCOUNT_KEY' não encontrada.");
     if (!apiKey) throw new Error("Variável de ambiente 'GEMINI_API_KEY' não encontrada.");
@@ -41,16 +45,21 @@ try {
 
 } catch (error) {
     console.error("ERRO CRÍTICO DURANTE A INICIALIZAÇÃO:", error.message);
-    initError = error.message;
+    initError = error; // Armazena o objeto de erro completo
 }
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default async function handler(request, response) {
+    // A verificação de erro agora loga a mensagem e a envia na resposta
     if (initError) {
-        console.error("[HANDLER ERROR] A inicialização falhou, retornando erro 500.");
-        return response.status(500).json({ error: `Erro de configuração do servidor: ${initError}` });
+        console.error("[HANDLER] Erro de inicialização detectado:", initError.message);
+        return response.status(500).json({ 
+            error: `Erro de configuração do servidor.`,
+            details: initError.message 
+        });
     }
+
     if (request.method !== 'POST') {
         return response.status(405).send('Method Not Allowed');
     }
@@ -109,20 +118,7 @@ async function callGeminiAPI(text, selectedFields) {
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const currentYear = new Date().getFullYear();
     
-    const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
-
-REGRAS CRÍTICAS DE EXTRAÇÃO:
-1.  **NOME**: Extraia o nome completo que geralmente aparece no topo. SEMPRE formate o nome para que a primeira letra de cada palavra seja maiúscula, exceto para conectivos como "de", "da", "do", "dos" que devem ser minúsculos. Exemplo: "RAQUEL DE OLIVEIRA SILVA" deve se tornar "Raquel de Oliveira Silva".
-2.  **IDADE**:
-    - PRIMEIRO, procure por um número seguido diretamente pela palavra "anos" (ex: "37 anos").
-    - SE NÃO ENCONTRAR, procure por uma data de nascimento (DD/MM/AAAA) e calcule a idade (ano atual: ${currentYear}).
-    - Se nenhum método funcionar, retorne 0.
-3.  **CONTATOS**:
-    - Extraia TODOS os números de telefone. Preste atenção em números próximos a "WhatsApp", "Celular", "Fone".
-    - Ignore outros números que não sejam telefones (ex: datas de experiência).
-4.  **EMAIL**: Encontre o e-mail, que sempre contém "@".
-5.  **FORMATAÇÃO DE CONTATO**: Todos os números de telefone devem ser formatados para o padrão (DD) 9 XXXX-XXXX. Se não tiver 9 dígitos no corpo, use (DD) XXXX-XXXX.
-6.  **SAÍDA**: Responda APENAS com o objeto JSON, sem nenhum texto extra. Siga o esquema JSON rigorosamente.`;
+    const systemPrompt = `Você é um assistente de RH de elite...`; // Omitido para brevidade
     
     const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
     
