@@ -74,11 +74,9 @@ export default async function handler(request, response) {
             console.error(`[PROCESS-JOB ${jobId}] Falhou: ${result.error}`);
         }
 
-        // O disparo do próximo job é a última coisa a ser feita.
-        await triggerNextJob(userId, request.headers.host);
-
-        // Remove o job atual para manter a fila limpa.
+        // Remove o job atual para manter a fila limpa e então aciona o próximo.
         await jobRef.delete().catch(() => {});
+        await triggerNextJob(userId, request.headers.host);
 
         // A resposta é enviada assim que o trabalho atual termina e o próximo job é disparado.
         return response.status(200).send(`Job ${jobId} processed and next job triggered.`);
