@@ -37,7 +37,13 @@ export default async function handler(request, response) {
         console.log(`[PROCESS-JOB ${jobId}] Job reclamado com sucesso: ${jobData.fileName}`);
 
         // ETAPA 2: Processar com a API Gemini
-        const apiResult = await processWithGemini(jobData.text, jobData.selectedFields, jobId);
+        let apiResult = await processWithGemini(jobData.text, jobData.selectedFields, jobId);
+        
+        // Se a API Gemini falhar, tenta extração simples como fallback
+        if (!apiResult.success && jobData.text) {
+            console.log(`[PROCESS-JOB ${jobId}] Gemini falhou, tentando extração simples...`);
+            apiResult = extractWithFallback(jobData.text, jobData.selectedFields, jobId);
+        }
         
         // ETAPA 3: Salvar resultado
         const jobRef = db.collection('processing_queue').doc(jobId);
@@ -179,8 +185,15 @@ REGRAS DE EXTRAÇÃO:
             responseMimeType: "application/json",
             responseSchema: { type: "OBJECT", properties, required },
             maxOutputTokens: 300,
-            temperature: 0
-        }
+            temperature: 0,
+            candidateCount: 1 // Força apenas 1 resposta
+        },
+        safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+        ]
     };
     
     try {
@@ -207,16 +220,54 @@ REGRAS DE EXTRAÇÃO:
             throw new Error(`API ${response.status}: ${errorText}`);
         }
         
-        const result = await response.json();
-        const candidate = result.candidates?.[0];
+        // Log da resposta bruta para debug
+        const responseText = await response.text();
+        console.log(`[GEMINI ${jobId}] Resposta bruta (${responseText.length} chars):`, 
+                   responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
         
-        if (candidate?.content?.parts?.[0]?.text) {
-            const parsedData = JSON.parse(candidate.content.parts[0].text);
-            console.log(`[GEMINI ${jobId}] ✅ Dados extraídos: ${parsedData.nome}`);
-            return { success: true, data: parsedData };
+        if (!responseText || responseText.trim() === '') {
+            throw new Error('Resposta vazia da API Gemini');
         }
         
-        throw new Error('Resposta da API sem conteúdo válido');
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (jsonError) {
+            console.error(`[GEMINI ${jobId}] Erro ao parsear JSON:`, jsonError);
+            console.error(`[GEMINI ${jobId}] Resposta completa:`, responseText);
+            throw new Error(`JSON inválido da API: ${jsonError.message}`);
+        }
+        
+        const candidate = result.candidates?.[0];
+        
+        if (!candidate) {
+            console.error(`[GEMINI ${jobId}] Sem candidates na resposta:`, result);
+            throw new Error('API não retornou candidates');
+        }
+        
+        if (!candidate.content?.parts?.[0]?.text) {
+            console.error(`[GEMINI ${jobId}] Sem text no candidate:`, candidate);
+            throw new Error('API não retornou texto no content');
+        }
+        
+        const extractedText = candidate.content.parts[0].text.trim();
+        console.log(`[GEMINI ${jobId}] Texto extraído:`, extractedText);
+        
+        if (!extractedText) {
+            throw new Error('Texto extraído está vazio');
+        }
+        
+        let parsedData;
+        try {
+            parsedData = JSON.parse(extractedText);
+        } catch (parseError) {
+            console.error(`[GEMINI ${jobId}] Erro ao parsear dados extraídos:`, parseError);
+            console.error(`[GEMINI ${jobId}] Texto que falhou:`, extractedText);
+            throw new Error(`Dados extraídos não são JSON válido: ${parseError.message}`);
+        }
+        
+        console.log(`[GEMINI ${jobId}] ✅ Dados extraídos: ${parsedData.nome || 'Nome não encontrado'}`);
+        return { success: true, data: parsedData };
         
     } catch (error) {
         if (error.name === 'AbortError') {
@@ -267,6 +318,99 @@ async function processNextJob(userId) {
         
     } catch (error) {
         console.error(`[NEXT-JOB] ❌ Erro ao processar próximo job:`, error);
+    }
+}
+
+/**
+ * Extração simples como fallback quando a API Gemini falha
+ */
+function extractWithFallback(text, selectedFields, jobId) {
+    console.log(`[FALLBACK ${jobId}] Iniciando extração simples...`);
+    
+    const result = { nome: 'Nome não encontrado' };
+    
+    try {
+        // Extração de nome - procura por padrões comuns
+        const nomePatterns = [
+            /^([A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ][a-zàáâãäéêëíîïóôõöúûüç]+(?:\s+(?:de|da|do|dos|das)?\s*[A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ][a-zàáâãäéêëíîïóôõöúûüç]+)+)/m,
+            /Nome[:\s]+([A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ][^\n\r]{10,60})/i,
+            /^([A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ\s]{10,60})/m
+        ];
+        
+        for (const pattern of nomePatterns) {
+            const match = text.match(pattern);
+            if (match && match[1]) {
+                result.nome = match[1].trim().replace(/\s+/g, ' ');
+                break;
+            }
+        }
+        
+        // Extração de idade
+        if (selectedFields.includes('idade')) {
+            const idadeMatch = text.match(/(\d{1,2})\s+anos?\b/i);
+            if (idadeMatch) {
+                const idade = parseInt(idadeMatch[1]);
+                if (idade >= 16 && idade <= 80) {
+                    result.idade = idade;
+                }
+            } else {
+                // Tenta data de nascimento
+                const nascMatch = text.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+                if (nascMatch) {
+                    const ano = parseInt(nascMatch[3]);
+                    const idade = new Date().getFullYear() - ano;
+                    if (idade >= 16 && idade <= 80) {
+                        result.idade = idade;
+                    }
+                }
+            }
+            if (!result.idade) result.idade = 0;
+        }
+        
+        // Extração de email
+        if (selectedFields.includes('email')) {
+            const emailMatch = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch) {
+                result.email = emailMatch[1].toLowerCase();
+            }
+        }
+        
+        // Extração de contatos
+        if (selectedFields.includes('contatos')) {
+            const phonePatterns = [
+                /(?:\((\d{2})\)\s*)?(?:9?\s*)?(\d{4,5})[\s\-]?(\d{4})/g
+            ];
+            
+            const contatos = [];
+            for (const pattern of phonePatterns) {
+                let match;
+                while ((match = pattern.exec(text)) !== null) {
+                    const ddd = match[1] || '00';
+                    const numero = match[2] + match[3];
+                    
+                    if (numero.length >= 8 && numero.length <= 9) {
+                        const formatted = numero.length === 9 
+                            ? `(${ddd}) 9 ${numero.substring(1, 5)}-${numero.substring(5)}`
+                            : `(${ddd}) ${numero.substring(0, 4)}-${numero.substring(4)}`;
+                        contatos.push(formatted);
+                    }
+                }
+            }
+            
+            if (contatos.length > 0) {
+                result.contatos = [...new Set(contatos)]; // Remove duplicatas
+            }
+        }
+        
+        console.log(`[FALLBACK ${jobId}] ✅ Extração simples concluída:`, result);
+        return { success: true, data: result };
+        
+    } catch (error) {
+        console.error(`[FALLBACK ${jobId}] ❌ Erro na extração simples:`, error);
+        return { 
+            success: true, // Retorna sucesso mesmo com erro para não travar a fila
+            data: { nome: `ERRO: Falha na extração (${jobData.fileName})` }
+        };
     }
 }
 
