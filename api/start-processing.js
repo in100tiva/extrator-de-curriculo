@@ -1,6 +1,7 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
+// Bloco de inicialização robusto
 if (!getApps().length) {
     try {
         const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
@@ -19,8 +20,27 @@ export default async function handler(request, response) {
     if (!userId) return response.status(400).send('User ID is required.');
 
     try {
-        console.log(`[START] Iniciando a primeira busca na fila para o usuário ${userId}`);
+        console.log(`[START] Iniciador Autocorretivo para o usuário ${userId}`);
         const queueRef = db.collection('processing_queue');
+
+        // --- LÓGICA AUTOCORRETIVA ---
+        // 1. Encontra e reseta jobs que possam ter travado em "processing"
+        const stuckJobsSnapshot = await queueRef
+            .where('userId', '==', userId)
+            .where('status', '==', 'processing')
+            .get();
+
+        if (!stuckJobsSnapshot.empty) {
+            console.log(`[START] ${stuckJobsSnapshot.size} job(s) travado(s) encontrado(s). Resetando para 'pending'...`);
+            const batch = db.batch();
+            stuckJobsSnapshot.docs.forEach(doc => {
+                batch.update(doc.ref, { status: 'pending' });
+            });
+            await batch.commit();
+            console.log(`[START] Jobs travados resetados.`);
+        }
+
+        // 2. Procede para encontrar o primeiro job pendente e iniciar a cadeia
         const snapshot = await queueRef
             .where('userId', '==', userId)
             .where('status', '==', 'pending')
@@ -29,13 +49,14 @@ export default async function handler(request, response) {
             .get();
 
         if (snapshot.empty) {
-            console.log(`[START] Fila para ${userId} já está vazia. Nada a fazer.`);
+            console.log(`[START] Fila para ${userId} está vazia. Nada a fazer.`);
             return response.status(200).send('Queue is empty, no action taken.');
         }
 
         const firstJobId = snapshot.docs[0].id;
-        console.log(`[START] Primeiro job encontrado: ${firstJobId}. Acionando o processador...`);
+        console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
+        // Aciona o trabalhador real de forma não bloqueante (fire-and-forget)
         const host = request.headers.host;
         const protocol = host.includes('localhost') ? 'http' : 'https';
         fetch(`${protocol}://${host}/api/process-job`, {
@@ -44,6 +65,7 @@ export default async function handler(request, response) {
             body: JSON.stringify({ jobId: firstJobId, userId: userId })
         }).catch(err => console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err));
 
+        // Responde imediatamente para o cliente
         response.status(202).send('Processing has been initiated.');
 
     } catch (error) {
