@@ -7,20 +7,18 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs" type="module"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .file-input-button { cursor: pointer; padding: 0.75rem 1.5rem; background-color: #4f46e5; color: white; border-radius: 0.5rem; transition: background-color 0.3s; font-weight: 500; }
         .file-input-button:hover { background-color: #4338ca; }
-        #fileName { margin-top: 1rem; color: #4b5563; font-style: italic; }
         table th, table td { text-align: left; padding: 12px 16px; }
         .sortable-header { cursor: pointer; user-select: none; }
-        .sortable-header:hover { background-color: #f9fafb; }
         .sort-icon { display: inline-block; margin-left: 8px; opacity: 0.5; transition: opacity 0.2s, transform 0.2s; }
         .sortable-header.sorted .sort-icon { opacity: 1; }
         .sortable-header.sorted.asc .sort-icon { transform: rotate(0deg); }
         .sortable-header.sorted.desc .sort-icon { transform: rotate(180deg); }
         #progress-bar { transition: width 0.3s ease-in-out; }
-        .queue-status-card { background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem; text-align: center; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
@@ -28,21 +26,19 @@
     <div class="w-full max-w-5xl mx-auto bg-white rounded-2xl shadow-lg p-8">
         <header class="text-center mb-8">
             <h1 class="text-3xl font-bold text-gray-800">Extrator de Dados de Currículos</h1>
-            <p class="text-gray-600 mt-2">Faça o upload de um ou mais currículos em PDF para extrair os dados em uma tabela.</p>
+            <p class="text-gray-600 mt-2">Faça o upload de um ou mais currículos em PDF para extrair os dados de forma rápida e segura.</p>
         </header>
 
         <main>
-            <!-- File Upload Section -->
             <div class="text-center mb-6">
                 <label for="pdfFile" class="file-input-button">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
                     Escolher Arquivo(s) PDF
                 </label>
                 <input type="file" id="pdfFile" accept=".pdf" class="hidden" multiple>
-                <p id="fileName" class="text-sm"></p>
+                <p id="fileName" class="text-sm mt-4"></p>
             </div>
 
-            <!-- Data Selector Section -->
             <div class="mb-6">
                 <h3 class="text-lg font-medium text-gray-700 text-center mb-3">Selecione os dados para extrair:</h3>
                 <div class="flex justify-center items-center space-x-6 text-gray-600">
@@ -52,78 +48,56 @@
                 </div>
             </div>
 
-            <!-- Action Button -->
             <div class="text-center mb-8">
                 <button id="extractButton" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100" disabled>
-                    Enviar para a Fila de Extração
+                    Extrair Informações
                 </button>
             </div>
-
-            <!-- Queue Status Section -->
-            <div id="queue-status-section" class="hidden mb-8">
-                <div class="queue-status-card">
-                    <h3 class="text-lg font-semibold text-gray-800">Status da Fila</h3>
-                    <p id="queue-position" class="text-gray-600 mt-2"></p>
-                    <div id="progress-container" class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                        <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
-                    </div>
+            
+            <div id="progress-section" class="hidden my-4">
+                <p id="progress-text" class="text-sm text-gray-600 text-center"></p>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                    <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
                 </div>
             </div>
 
-            <!-- Results Section -->
             <div id="results" class="hidden">
                 <div class="flex justify-between items-center border-b pb-2 mb-6">
                     <h2 class="text-2xl font-semibold text-gray-800">Dados Extraídos</h2>
-                    <button id="downloadExcelButton" class="hidden bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
+                    <button id="downloadExcelButton" class="hidden bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
                         Baixar como Excel
                     </button>
                 </div>
-                <div id="output" class="space-y-4"></div>
+                <div id="output"></div>
                 <div id="pagination-controls" class="hidden mt-6 flex items-center justify-between">
                     <span id="page-info" class="text-sm text-gray-700"></span>
                     <div>
-                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">Anterior</button>
-                        <button id="next-page" class="ml-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed">Próxima</button>
+                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg">Anterior</button>
+                        <button id="next-page" class="ml-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg">Próxima</button>
                     </div>
                 </div>
             </div>
 
-             <!-- Error Message -->
-            <div id="error-container" class="hidden mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
+            <div id="error-container" class="hidden mt-4 bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded-lg">
                 <strong class="font-bold">Erro:</strong>
-                <span class="block sm:inline" id="error-message"></span>
+                <span id="error-message"></span>
             </div>
         </main>
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        // Import the entire pdf.js library under an alias from a stable CDN
-        import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.mjs';
-
-        const firebaseConfig = {
-          apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
-          authDomain: "pdf-extrator.firebaseapp.com",
-          projectId: "pdf-extrator",
-          storageBucket: "pdf-extrator.appspot.com",
-          messagingSenderId: "1083062925751",
-          appId: "1:1083062925751:web:384523e9beb7362bbd5032",
-          measurementId: "G-29B954MXCN"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        // Set the worker source on the aliased library object
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.mjs`;
+        const { pdfjsLib } = globalThis;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
         
-        const ui = {
+        const ui = {};
+        // Mapping UI elements
+        Object.assign(ui, {
             pdfFileInput: document.getElementById('pdfFile'),
             fileNameDisplay: document.getElementById('fileName'),
             extractButton: document.getElementById('extractButton'),
-            queueStatusSection: document.getElementById('queue-status-section'),
-            queuePosition: document.getElementById('queue-position'),
+            progressSection: document.getElementById('progress-section'),
+            progressText: document.getElementById('progress-text'),
             progressBar: document.getElementById('progress-bar'),
             resultsDiv: document.getElementById('results'),
             outputDiv: document.getElementById('output'),
@@ -139,129 +113,57 @@
                 email: document.getElementById('select-email'),
                 contatos: document.getElementById('select-contatos'),
             }
-        };
+        });
 
         let allExtractedData = [];
         let sortState = { key: null, direction: 'asc' };
-        let currentSelectedFields = [];
         let currentPage = 1;
         const ITEMS_PER_PAGE = 10;
-        let unsubscribe = null;
-        let userId = localStorage.getItem('userId') || `user_${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('userId', userId);
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         ui.pdfFileInput.addEventListener('change', (e) => {
             const files = e.target.files;
-            ui.fileNameDisplay.textContent = files.length > 0 ? `${files.length} arquivo(s) selecionado(s).` : 'Nenhum arquivo selecionado.';
+            ui.fileNameDisplay.textContent = files.length > 0 ? `${files.length} arquivo(s) selecionado(s).` : '';
             ui.extractButton.disabled = files.length === 0;
-            ui.downloadExcelButton.classList.add('hidden');
             hideError();
         });
 
         ui.extractButton.addEventListener('click', async () => {
             const files = Array.from(ui.pdfFileInput.files);
-            if (files.length === 0) return showError('Nenhum arquivo selecionado.');
-            
+            if (files.length === 0) return;
+
             resetState();
             ui.extractButton.disabled = true;
-            ui.queueStatusSection.classList.remove('hidden');
+            ui.progressSection.classList.remove('hidden');
 
-            const jobIds = [];
-            
-            for (const file of files) {
+            const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                ui.progressText.textContent = `Processando arquivo ${i + 1} de ${files.length}: ${file.name}`;
+                ui.progressBar.style.width = `${((i + 1) / files.length) * 100}%`;
+
                 try {
                     const text = await extractTextFromPdf(file);
-                    const docRef = await addDoc(collection(db, "processing_queue"), {
-                        userId: userId,
-                        fileName: file.name,
-                        text: text,
-                        selectedFields: currentSelectedFields,
-                        status: 'pending',
-                        createdAt: serverTimestamp()
-                    });
-                    jobIds.push(docRef.id);
+                    const data = await callGeminiAPI(text, selectedFields);
+                    if (data) {
+                        allExtractedData.push({ ...data, fileName: file.name });
+                    } else {
+                        throw new Error("Não foi possível extrair dados do arquivo.");
+                    }
+                    await sleep(1500); // Wait 1.5 seconds to respect API rate limits
                 } catch (err) {
-                    showError(`Falha ao enviar o arquivo ${file.name} para a fila.`);
-                    console.error(err);
+                    showError(`Falha ao processar ${file.name}: ${err.message}`);
+                    await sleep(2000); // Longer pause on error
                 }
             }
 
-            if (jobIds.length > 0) {
-                listenForJobUpdates(jobIds);
-                
-                try {
-                    await fetch('/api/start-processing', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: userId })
-                    });
-                } catch (err) {
-                    showError("Falha ao iniciar o processamento no servidor.");
-                    console.error("Error triggering worker:", err);
-                }
+            ui.progressSection.classList.add('hidden');
+            ui.extractButton.disabled = false;
+            if (allExtractedData.length > 0) {
+                renderTable();
             }
         });
-
-        function listenForJobUpdates(jobIds) {
-             if (unsubscribe) unsubscribe(); 
-            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('__name__', 'in', jobIds));
-            unsubscribe = onSnapshot(q, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === "modified") {
-                        const job = change.doc.data();
-                        if (job.status === 'completed' && job.result) {
-                            const existingIndex = allExtractedData.findIndex(d => d.fileName === job.fileName);
-                            if (existingIndex === -1) {
-                                allExtractedData.push({ ...job.result, jobId: change.doc.id, fileName: job.fileName });
-                            }
-                            renderTable();
-                        } else if (job.status === 'failed') {
-                            showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
-                        }
-                    }
-                });
-                updateQueueStatus(jobIds);
-            }, (error) => {
-                console.error("Error in snapshot listener: ", error);
-                showError("Erro de permissão ao ler os resultados. Verifique as regras de segurança do Firestore.");
-            });
-        }
-
-        async function updateQueueStatus(jobIds) {
-            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('status', '==', 'pending'), orderBy('createdAt'));
-            const pendingSnapshot = await getDocs(q);
-            const totalInQueue = pendingSnapshot.docs.length;
-            
-            ui.queuePosition.textContent = totalInQueue > 0 ? `Seus ${totalInQueue} arquivo(s) estão sendo processados...` : 'Processando...';
-            
-            const completedJobs = allExtractedData.length;
-            const progress = jobIds.length > 0 ? (completedJobs / jobIds.length) * 100 : 0;
-            ui.progressBar.style.width = `${progress}%`;
-
-            if (completedJobs === jobIds.length) {
-                ui.queuePosition.textContent = "Todos os arquivos foram processados!";
-                if (unsubscribe) {
-                    unsubscribe();
-                    unsubscribe = null;
-                }
-                if (allExtractedData.length > 0) {
-                   ui.downloadExcelButton.classList.remove('hidden');
-                }
-            }
-        }
-        
-        function resetState() {
-            allExtractedData = [];
-            sortState = { key: null, direction: 'asc' };
-            currentPage = 1;
-            currentSelectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-            ui.resultsDiv.classList.add('hidden');
-            ui.queueStatusSection.classList.add('hidden');
-            ui.downloadExcelButton.classList.add('hidden');
-            ui.paginationControls.classList.add('hidden');
-            ui.outputDiv.innerHTML = ''; // Clear previous results
-            hideError();
-        }
 
         async function extractTextFromPdf(file) {
             const fileReader = new FileReader();
@@ -284,11 +186,71 @@
             });
         }
         
-        function setupTable(selectedFields) {
+        async function callGeminiAPI(text, selectedFields) {
+            const payload = { text, selectedFields };
+            const response = await fetch('/api/proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Erro do servidor: ${response.status}`);
+            }
+            return await response.json();
+        }
+
+        function resetState() {
+            allExtractedData = [];
+            sortState = { key: null, direction: 'asc' };
+            currentPage = 1;
+            ui.resultsDiv.classList.add('hidden');
+            ui.outputDiv.innerHTML = '';
+            hideError();
+        }
+
+        function renderTable() {
+            if (!document.querySelector('#output table')) {
+                setupTable();
+            }
+            ui.resultsDiv.classList.remove('hidden');
+            if(allExtractedData.length > 0) ui.downloadExcelButton.classList.remove('hidden');
+            sortData();
+
+            const tableBody = document.querySelector('#output tbody');
+            if (!tableBody) return;
+            tableBody.innerHTML = '';
+            
+            const paginatedData = allExtractedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+            paginatedData.forEach(data => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'N/A'}</td>`;
+                if (selectedFields.includes('idade')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
+                if (selectedFields.includes('email')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
+                if (selectedFields.includes('contatos')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
+                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
+                row.innerHTML = cells;
+                tableBody.appendChild(row);
+            });
+
+            document.querySelectorAll('.sortable-header').forEach(h => {
+                h.classList.remove('sorted', 'asc', 'desc');
+                if (h.dataset.sortKey === sortState.key) {
+                    h.classList.add('sorted', sortState.direction);
+                }
+            });
+            renderPaginationControls();
+        }
+
+        function setupTable() {
+            const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
             const headers = [
                 { key: 'nome', label: 'Nome', sortable: true },
-                ...(selectedFields.map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1), sortable: true }))),
-                { key: 'fileName', label: 'Arquivo', sortable: false }
+                ...selectedFields.map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1), sortable: true })),
+                { key: 'fileName', label: 'Arquivo', sortable: true }
             ];
             const iconSvg = `<svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 15a.5.5 0 0 0 .5-.5V2.707l3.146 3.147a.5.5 0 0 0 .708-.708l-4-4a.5.5 0 0 0-.708 0l-4 4a.5.5 0 1 0 .708.708L7.5 2.707V14.5a.5.5 0 0 0 .5.5z"/></svg>`;
             const headerHtml = headers.map(h => h.sortable ? `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="${h.key}">${h.label}${iconSvg}</th>` : `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h.label}</th>`).join('');
@@ -308,56 +270,42 @@
             if (!sortState.key) return;
             const { key, direction } = sortState;
             const factor = direction === 'asc' ? 1 : -1;
+
             allExtractedData.sort((a, b) => {
-                let valA = a[key], valB = b[key];
+                let valA = a[key];
+                let valB = b[key];
+
+                if (valA === undefined || valA === null) valA = '';
+                if (valB === undefined || valB === null) valB = '';
+
                 if (key === 'idade') {
-                    const aHas = valA > 0, bHas = valB > 0;
+                    const aHas = valA > 0;
+                    const bHas = valB > 0;
                     if (aHas !== bHas) return aHas ? -1 : 1;
                     return (valA - valB) * factor;
                 }
                 if (key === 'email' || key === 'contatos') {
-                    const aHas = valA && valA.length > 0, bHas = valB && valB.length > 0;
+                    const aHas = Array.isArray(valA) ? valA.length > 0 : (valA || '').length > 0;
+                    const bHas = Array.isArray(valB) ? valB.length > 0 : (valB || '').length > 0;
                     if (aHas !== bHas) return aHas ? -1 : 1;
                 }
-                if (typeof valA === 'string') return valA.localeCompare(valB) * factor;
-                if (typeof valA === 'number') return (valA - valB) * factor;
+
+                if (typeof valA === 'string') {
+                    return valA.localeCompare(valB, 'pt-BR') * factor;
+                }
+                if (typeof valA === 'number') {
+                    return (valA - valB) * factor;
+                }
                 return 0;
             });
         }
 
-        function renderTable() {
-            if (!document.querySelector('#output table')) {
-                setupTable(currentSelectedFields);
-            }
-            ui.resultsDiv.classList.remove('hidden');
-            sortData();
-            const tableBody = document.querySelector('#output tbody');
-            if (!tableBody) return;
-            tableBody.innerHTML = '';
-            const paginatedData = allExtractedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-            paginatedData.forEach(data => {
-                const row = document.createElement('tr');
-                row.className = 'hover:bg-gray-50';
-                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'N/A'}</td>`;
-                if (currentSelectedFields.includes('idade')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
-                if (currentSelectedFields.includes('email')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
-                if (currentSelectedFields.includes('contatos')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
-                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
-                row.innerHTML = cells;
-                tableBody.appendChild(row);
-            });
-            document.querySelectorAll('.sortable-header').forEach(h => {
-                h.classList.remove('sorted', 'asc', 'desc');
-                if (h.dataset.sortKey === sortState.key) {
-                    h.classList.add('sorted', sortState.direction);
-                }
-            });
-            renderPaginationControls();
-        }
-
         function renderPaginationControls() {
             const totalPages = Math.ceil(allExtractedData.length / ITEMS_PER_PAGE);
-            if (totalPages <= 1) return ui.paginationControls.classList.add('hidden');
+            if (totalPages <= 1) {
+                ui.paginationControls.classList.add('hidden');
+                return;
+            }
             ui.paginationControls.classList.remove('hidden');
             ui.pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
             ui.prevPage.disabled = currentPage === 1;
@@ -368,23 +316,23 @@
         ui.nextPage.addEventListener('click', () => { if (currentPage < Math.ceil(allExtractedData.length / ITEMS_PER_PAGE)) { currentPage++; renderTable(); } });
         
         ui.downloadExcelButton.addEventListener('click', () => {
+            const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
             const dataToExport = allExtractedData.map(item => {
                 const row = { Nome: item.nome || 'N/A' };
-                if (currentSelectedFields.includes('idade')) row.Idade = item.idade > 0 ? item.idade : 'N/A';
-                if (currentSelectedFields.includes('email')) row['E-mail'] = item.email || 'N/A';
-                if (currentSelectedFields.includes('contatos')) row.Contatos = item.contatos?.join(', ') || 'N/A';
+                if (selectedFields.includes('idade')) row.Idade = item.idade > 0 ? item.idade : 'N/A';
+                if (selectedFields.includes('email')) row['E-mail'] = item.email || 'N/A';
+                if (selectedFields.includes('contatos')) row.Contatos = item.contatos?.join(', ') || 'N/A';
                 row.Arquivo = item.fileName;
                 return row;
             });
             const ws = XLSX.utils.json_to_sheet(dataToExport);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Dados");
+            XLSX.utils.book_append_sheet(wb, ws, "Dados Extraídos");
             XLSX.writeFile(wb, "extracao_curriculos.xlsx");
         });
 
         function showError(message) { ui.errorMessage.textContent = message; ui.errorContainer.classList.remove('hidden'); }
         function hideError() { ui.errorContainer.classList.add('hidden'); }
-
     </script>
 </body>
 </html>
