@@ -13,6 +13,10 @@ if (!getApps().length) {
 }
 const db = getFirestore();
 
+<<<<<<< HEAD
+// Função que executa o trabalho em segundo plano
+async function processJobInBackground(jobId, userId, host) {
+=======
 async function triggerNextJob(userId, host) {
     const nextSnapshot = await db.collection('processing_queue')
         .where('userId', '==', userId)
@@ -55,15 +59,17 @@ export default async function handler(request, response) {
     const { jobId, userId } = request.body;
     if (!jobId || !userId) return response.status(400).send('Job ID and User ID are required.');
 
+>>>>>>> 557ca2cda9a81ea486e69bfa41e02122f7abe976
     try {
         console.log(`[PROCESS-JOB ${jobId}] Iniciando processamento...`);
         const jobRef = db.collection('processing_queue').doc(jobId);
         const jobDoc = await jobRef.get();
 
+        // Se o job não for válido, aciona o próximo para não quebrar a cadeia
         if (!jobDoc.exists || jobDoc.data().status !== 'pending') {
             console.log(`[PROCESS-JOB ${jobId}] Job não encontrado ou já processado. Verificando próximo...`);
-            await triggerNextJob(userId, request.headers.host);
-            return response.status(200).send('Job already processed or invalid.');
+            await triggerNextJob(userId, host);
+            return;
         }
 
         const jobData = jobDoc.data();
@@ -78,16 +84,61 @@ export default async function handler(request, response) {
             console.error(`[PROCESS-JOB ${jobId}] Falhou: ${result.error}`);
         }
 
-        // O disparo do próximo job é a última coisa a ser feita.
-        await triggerNextJob(userId, request.headers.host);
-        
-        // A resposta só é enviada após todo o trabalho (incluindo o disparo do próximo) ser concluído.
-        return response.status(200).send(`Job ${jobId} processed and next job triggered.`);
+        // Aciona o próximo job como a última etapa
+        await triggerNextJob(userId, host);
 
     } catch (error) {
         console.error(`[PROCESS-JOB ${jobId}] Erro inesperado:`, error);
+        // Tenta marcar o job como falho para que a lógica autocorretiva possa pegá-lo
         await db.collection('processing_queue').doc(jobId).update({ status: 'failed', error: 'Erro interno do worker.' }).catch(() => {});
-        return response.status(500).send('Internal Server Error');
+    }
+}
+
+// Função handler principal, que responde imediatamente
+export default function handler(request, response) {
+    if (request.method !== 'POST') {
+        return response.status(405).send('Method Not Allowed');
+    }
+
+    const { jobId, userId } = request.body;
+    if (!jobId || !userId) {
+        return response.status(400).send('Job ID and User ID are required.');
+    }
+
+    // **CORREÇÃO PRINCIPAL**
+    // Responde IMEDIATAMENTE para o chamador (seja o 'start-processing' ou o job anterior)
+    response.status(202).send(`Accepted job ${jobId}.`);
+
+    // Inicia o processamento em segundo plano sem esperar que ele termine
+    processJobInBackground(jobId, userId, request.headers.host);
+}
+
+
+async function triggerNextJob(userId, host) {
+    const nextSnapshot = await db.collection('processing_queue')
+        .where('userId', '==', userId)
+        .where('status', '==', 'pending')
+        .orderBy('createdAt')
+        .limit(1)
+        .get();
+
+    if (!nextSnapshot.empty) {
+        const nextJobId = nextSnapshot.docs[0].id;
+        console.log(`[TRIGGER] Próximo job encontrado: ${nextJobId}. Acionando...`);
+        
+        try {
+            const protocol = host.includes('localhost') ? 'http' : 'https';
+            // Usa await para garantir que a requisição seja despachada
+            await fetch(`${protocol}://${host}/api/process-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: nextJobId, userId: userId })
+            });
+        } catch (err) {
+            console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
+        }
+    } else {
+        console.log(`[TRIGGER] Fila para ${userId} finalizada.`);
     }
 }
 
