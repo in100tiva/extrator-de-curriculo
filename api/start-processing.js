@@ -56,7 +56,7 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // Aciona o trabalhador real de forma não bloqueante (fire-and-forget)
+        // Aciona o trabalhador real e garante que a requisição seja despachada
         const host = request.headers.host;
         const protocol = host.includes('localhost') ? 'http' : 'https';
         fetch(`${protocol}://${host}/api/process-job`, {
@@ -64,6 +64,10 @@ export default async function handler(request, response) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ jobId: firstJobId, userId: userId })
         }).catch(err => console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err));
+        
+        // **CORREÇÃO APLICADA**
+        // Aguarda o próximo ciclo de eventos para garantir que o fetch foi enviado.
+        await new Promise(res => setImmediate(res));
 
         // Responde imediatamente para o cliente
         response.status(202).send('Processing has been initiated.');
