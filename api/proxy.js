@@ -23,11 +23,11 @@ export default async function handler(request, response) {
         const model = "gemini-2.5-flash-preview-05-20";
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         
-        // --- LÓGICA DE RETENTATIVA COM ESPERA EXPONENCIAL ---
+        // --- LÓGICA DE RETENTATIVA APRIMORADA ---
         let geminiResponse;
         let lastError;
-        const maxRetries = 5;
-        let delay = 1000; // Começa com 1 segundo
+        const maxRetries = 7; // Aumentado de 5 para 7
+        let delay = 2000; // Aumentado de 1000ms para 2000ms
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             geminiResponse = await fetch(apiUrl, {
@@ -41,22 +41,27 @@ export default async function handler(request, response) {
                 const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (candidateText) {
                     return response.status(200).json(JSON.parse(candidateText));
-                } else {
-                    lastError = 'Resposta da API inválida.';
-                    // Continua para tentar novamente se a resposta for vazia mas o status for OK
                 }
-            } else if (geminiResponse.status === 429) {
+                lastError = 'Resposta da API bem-sucedida, mas com conteúdo inválido.';
+                // Pausa antes de tentar novamente mesmo em caso de sucesso com corpo vazio
+                await sleep(delay); 
+                continue;
+            } 
+            
+            if (geminiResponse.status === 429) {
                 lastError = `Limite de requisições da API atingido (status ${geminiResponse.status}).`;
-                console.log(`${lastError} Tentativa ${attempt}/${maxRetries}. Aguardando ${delay}ms...`);
-                await sleep(delay);
-                delay *= 2; // Dobra o tempo de espera
+                const jitter = Math.random() * 1000; // Adiciona variação de até 1s
+                const waitTime = delay + jitter;
+                console.log(`${lastError} Tentativa ${attempt}/${maxRetries}. Aguardando ${(waitTime / 1000).toFixed(1)}s...`);
+                await sleep(waitTime);
+                delay *= 2; // Dobra o tempo de espera base
                 continue; // Tenta novamente
-            } else {
-                // Para outros erros (400, 500, etc.), falha imediatamente
-                const errorData = await geminiResponse.json();
-                console.error('Gemini API Error:', errorData);
-                return response.status(geminiResponse.status).json({ error: errorData.error?.message || 'Falha na API do Gemini' });
-            }
+            } 
+            
+            // Para outros erros (400, 500, etc.), falha imediatamente
+            const errorData = await geminiResponse.json();
+            console.error('Gemini API Error:', errorData);
+            return response.status(geminiResponse.status).json({ error: errorData.error?.message || 'Falha na API do Gemini' });
         }
         
         // Se todas as tentativas falharem
