@@ -1,14 +1,13 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-// Bloco de inicialização robusto
 if (!getApps().length) {
     try {
         const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
         initializeApp({ credential: cert(serviceAccount) });
     } catch (e) {
-        console.error("ERRO CRÍTICO: Falha na inicialização do Firebase Admin. Verifique as credenciais.", e);
-        throw e; // Impede que a função seja executada com erro
+        console.error("ERRO CRÍTICO: Falha na inicialização do Firebase Admin.", e);
+        throw e;
     }
 }
 const db = getFirestore();
@@ -37,7 +36,6 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // Aciona o trabalhador real de forma não bloqueante (fire-and-forget)
         const host = request.headers.host;
         const protocol = host.includes('localhost') ? 'http' : 'https';
         fetch(`${protocol}://${host}/api/process-job`, {
@@ -46,7 +44,6 @@ export default async function handler(request, response) {
             body: JSON.stringify({ jobId: firstJobId, userId: userId })
         }).catch(err => console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err));
 
-        // Responde imediatamente para o cliente
         response.status(202).send('Processing has been initiated.');
 
     } catch (error) {
