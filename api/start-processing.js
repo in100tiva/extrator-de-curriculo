@@ -21,11 +21,17 @@ export default async function handler(request, response) {
     console.log(`[START-PROCESSING] === INICIANDO PARA USUÁRIO ${userId} ===`);
 
     try {
-        // ETAPA 1: Limpeza e correção de jobs travados
+        // ETAPA 1: Limpeza de jobs antigos (mais de 24 horas)
+        const cleanupOldResult = await cleanupOldJobs(userId);
+        if (cleanupOldResult.deleted > 0) {
+            console.log(`[START-PROCESSING] Removidos ${cleanupOldResult.deleted} jobs antigos`);
+        }
+
+        // ETAPA 2: Limpeza e correção de jobs travados
         const cleanupResult = await cleanupStuckJobs(userId);
         console.log(`[START-PROCESSING] Limpeza: ${cleanupResult.reset} jobs resetados, ${cleanupResult.failed} marcados como failed`);
 
-        // ETAPA 2: Encontrar o primeiro job pendente
+        // ETAPA 3: Encontrar o primeiro job pendente
         const firstJob = await findFirstPendingJob(userId);
         
         if (!firstJob) {
@@ -38,7 +44,7 @@ export default async function handler(request, response) {
 
         console.log(`[START-PROCESSING] 🎯 Primeiro job pendente: ${firstJob.id} (${firstJob.data.fileName})`);
 
-        // ETAPA 3: Disparar o primeiro job
+        // ETAPA 4: Disparar o primeiro job
         const triggerResult = await triggerFirstJob(firstJob.id, userId);
         
         if (triggerResult.success) {
@@ -62,6 +68,54 @@ export default async function handler(request, response) {
             success: false, 
             error: 'Critical error in start processing' 
         });
+    }
+}
+
+/**
+ * Remove jobs antigos (completed/failed) para evitar acúmulo
+ */
+async function cleanupOldJobs(userId) {
+    const oneDayAgo = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+    
+    try {
+        // Busca jobs completed/failed antigos
+        const oldJobsSnapshot = await db.collection('processing_queue')
+            .where('userId', '==', userId)
+            .where('finishedAt', '<=', oneDayAgo)
+            .limit(50) // Limita para não sobrecarregar
+            .get();
+
+        if (oldJobsSnapshot.empty) {
+            return { deleted: 0 };
+        }
+
+        console.log(`[CLEANUP-OLD] Encontrados ${oldJobsSnapshot.size} jobs antigos para remoção`);
+
+        // Remove em lotes para evitar timeout
+        const batch = db.batch();
+        let deleteCount = 0;
+
+        oldJobsSnapshot.docs.forEach(doc => {
+            const jobData = doc.data();
+            
+            // Só remove se realmente finalizou (completed ou failed)
+            if (jobData.status === 'completed' || jobData.status === 'failed') {
+                batch.delete(doc.ref);
+                deleteCount++;
+                console.log(`[CLEANUP-OLD] Agendando remoção: ${doc.id} (${jobData.status})`);
+            }
+        });
+
+        if (deleteCount > 0) {
+            await batch.commit();
+            console.log(`[CLEANUP-OLD] ✅ ${deleteCount} jobs antigos removidos`);
+        }
+
+        return { deleted: deleteCount };
+
+    } catch (error) {
+        console.error('[CLEANUP-OLD] Erro na limpeza de jobs antigos:', error);
+        return { deleted: 0 };
     }
 }
 

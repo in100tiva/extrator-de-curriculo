@@ -165,9 +165,11 @@ async function processWithGemini(text, selectedFields, jobId) {
 REGRAS DE EXTRAÇÃO:
 1. NOME: Nome completo, primeira letra maiúscula
 2. IDADE: Número + "anos" OU calcule pela data nascimento (ano atual: ${currentYear}). Se não achar, retorne 0
-3. EMAIL: Procure por texto com "@"
-4. CONTATOS: Números de telefone, formate (DD) 9XXXX-XXXX
-5. RESPOSTA: APENAS JSON, sem texto extra`;
+3. EMAIL: Procure por texto com "@". Se não encontrar, use ""
+4. CONTATOS: Números de telefone, formate (DD) 9XXXX-XXXX. Se não encontrar, use []
+5. RESPOSTA: APENAS JSON válido e COMPLETO, sem texto extra
+
+IMPORTANTE: Sempre complete o JSON! Não truncar a resposta no meio.`;
     
     const userPrompt = `Extraia dados deste currículo:\n\n${truncatedText}`;
     
@@ -184,7 +186,7 @@ REGRAS DE EXTRAÇÃO:
         generationConfig: {
             responseMimeType: "application/json",
             responseSchema: { type: "OBJECT", properties, required },
-            maxOutputTokens: 300,
+            maxOutputTokens: 500, // Aumentado para evitar truncamento
             temperature: 0,
             candidateCount: 1 // Força apenas 1 resposta
         },
@@ -261,9 +263,27 @@ REGRAS DE EXTRAÇÃO:
         try {
             parsedData = JSON.parse(extractedText);
         } catch (parseError) {
-            console.error(`[GEMINI ${jobId}] Erro ao parsear dados extraídos:`, parseError);
-            console.error(`[GEMINI ${jobId}] Texto que falhou:`, extractedText);
-            throw new Error(`Dados extraídos não são JSON válido: ${parseError.message}`);
+            console.log(`[GEMINI ${jobId}] JSON incompleto, tentando correção automática...`);
+            
+            // Tenta corrigir JSON truncado
+            let correctedJson = extractedText;
+            
+            // Se termina com vírgula ou dois pontos, remove
+            correctedJson = correctedJson.replace(/[,:]\s*$/, '');
+            
+            // Se não fecha com }, adiciona
+            if (!correctedJson.trim().endsWith('}')) {
+                correctedJson += '}';
+            }
+            
+            // Tenta parsear novamente
+            try {
+                parsedData = JSON.parse(correctedJson);
+                console.log(`[GEMINI ${jobId}] ✅ JSON corrigido automaticamente:`, correctedJson);
+            } catch (secondError) {
+                console.error(`[GEMINI ${jobId}] Falha na correção automática:`, secondError);
+                throw new Error(`JSON irrecuperável: ${parseError.message}`);
+            }
         }
         
         console.log(`[GEMINI ${jobId}] ✅ Dados extraídos: ${parsedData.nome || 'Nome não encontrado'}`);
