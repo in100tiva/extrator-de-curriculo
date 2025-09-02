@@ -23,8 +23,7 @@ export default async function handler(request, response) {
         console.log(`[START] Iniciador Autocorretivo para o usuário ${userId}`);
         const queueRef = db.collection('processing_queue');
 
-        // --- LÓGICA AUTOCORRETIVA ---
-        // 1. Encontra e reseta jobs que possam ter travado em "processing"
+        // Lógica Autocorretiva: Reseta jobs que possam ter travado
         const stuckJobsSnapshot = await queueRef
             .where('userId', '==', userId)
             .where('status', '==', 'processing')
@@ -40,7 +39,7 @@ export default async function handler(request, response) {
             console.log(`[START] Jobs travados resetados.`);
         }
 
-        // 2. Procede para encontrar o primeiro job pendente e iniciar a cadeia
+        // Procede para encontrar o primeiro job pendente
         const snapshot = await queueRef
             .where('userId', '==', userId)
             .where('status', '==', 'pending')
@@ -56,20 +55,22 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // Aciona o trabalhador real e garante que a requisição seja despachada
-        const host = request.headers.host;
-        const protocol = host.includes('localhost') ? 'http' : 'https';
-        fetch(`${protocol}://${host}/api/process-job`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId: firstJobId, userId: userId })
-        }).catch(err => console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err));
-        
         // **CORREÇÃO APLICADA**
-        // Aguarda o próximo ciclo de eventos para garantir que o fetch foi enviado.
-        await new Promise(res => setImmediate(res));
+        // Aciona o trabalhador e AGUARDA o despacho da requisição.
+        try {
+            const host = request.headers.host;
+            const protocol = host.includes('localhost') ? 'http' : 'https';
+            await fetch(`${protocol}://${host}/api/process-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: firstJobId, userId: userId })
+            });
+        } catch (err) {
+            console.error(`[START] Erro CRÍTICO ao acionar o process-job para ${firstJobId}:`, err);
+            // Se o disparo inicial falhar, não adianta continuar.
+            return response.status(500).send('Failed to trigger the processing job.');
+        }
 
-        // Responde imediatamente para o cliente
         response.status(202).send('Processing has been initiated.');
 
     } catch (error) {

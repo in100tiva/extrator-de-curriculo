@@ -25,16 +25,20 @@ async function triggerNextJob(userId, host) {
         const nextJobId = nextSnapshot.docs[0].id;
         console.log(`[TRIGGER] Próximo job encontrado: ${nextJobId}. Acionando...`);
         
-        const protocol = host.includes('localhost') ? 'http' : 'https';
-        fetch(`${protocol}://${host}/api/process-job`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId: nextJobId, userId: userId })
-        }).catch(err => console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err));
-        
         // **CORREÇÃO APLICADA**
-        // Aguarda o próximo ciclo de eventos para garantir que o fetch foi enviado.
-        await new Promise(res => setImmediate(res));
+        // Aguarda o despacho da requisição para o próximo job antes de finalizar.
+        try {
+            const protocol = host.includes('localhost') ? 'http' : 'https';
+            await fetch(`${protocol}://${host}/api/process-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: nextJobId, userId: userId })
+            });
+        } catch (err) {
+            console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
+            // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
+            // A lógica autocorretiva no start-processing irá reiniciar a partir daqui na próxima vez.
+        }
     } else {
         console.log(`[TRIGGER] Fila para ${userId} finalizada.`);
     }
@@ -47,9 +51,6 @@ export default async function handler(request, response) {
     const { jobId, userId } = request.body;
     if (!jobId || !userId) return response.status(400).send('Job ID and User ID are required.');
 
-    // Responde imediatamente para liberar a conexão
-    response.status(202).send(`Accepted job ${jobId}.`);
-
     try {
         console.log(`[PROCESS-JOB ${jobId}] Iniciando processamento...`);
         const jobRef = db.collection('processing_queue').doc(jobId);
@@ -58,7 +59,7 @@ export default async function handler(request, response) {
         if (!jobDoc.exists || jobDoc.data().status !== 'pending') {
             console.log(`[PROCESS-JOB ${jobId}] Job não encontrado ou já processado. Verificando próximo...`);
             await triggerNextJob(userId, request.headers.host);
-            return;
+            return response.status(200).send('Job already processed or invalid.');
         }
 
         const jobData = jobDoc.data();
@@ -73,11 +74,16 @@ export default async function handler(request, response) {
             console.error(`[PROCESS-JOB ${jobId}] Falhou: ${result.error}`);
         }
 
+        // O disparo do próximo job é a última coisa a ser feita.
         await triggerNextJob(userId, request.headers.host);
+        
+        // A resposta só é enviada após todo o trabalho (incluindo o disparo do próximo) ser concluído.
+        return response.status(200).send(`Job ${jobId} processed and next job triggered.`);
 
     } catch (error) {
         console.error(`[PROCESS-JOB ${jobId}] Erro inesperado:`, error);
         await db.collection('processing_queue').doc(jobId).update({ status: 'failed', error: 'Erro interno do worker.' }).catch(() => {});
+        return response.status(500).send('Internal Server Error');
     }
 }
 
