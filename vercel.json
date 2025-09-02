@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/process-job.js": {
+      "maxDuration": 10
+    },
+    "api/start-processing.js": {
+      "maxDuration": 5
+    }
+  }
+}
