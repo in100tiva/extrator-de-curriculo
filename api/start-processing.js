@@ -84,8 +84,6 @@ export default async function handler(request, response) {
                 console.error(`[START] process-job retornou ${res.status}: ${resText}`);
                 return response.status(500).send('Failed to trigger the processing job.');
             }
-            // garante que a requisição seja despachada antes do encerramento
-            await new Promise(r => setTimeout(r, 0));
         } catch (err) {
             console.error(`[START] Erro CRÍTICO ao acionar o process-job para ${firstJobId}:`, err);
             // Se o disparo inicial falhar, não adianta continuar.

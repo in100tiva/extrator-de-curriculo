@@ -38,8 +38,6 @@ async function triggerNextJob(userId, host) {
             if (!res.ok) {
                 console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${resText}`);
             }
-            // pequena pausa para garantir que o request seja liberado antes do término da função
-            await new Promise(r => setTimeout(r, 0));
         } catch (err) {
             console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
             // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
