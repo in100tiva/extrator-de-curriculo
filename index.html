@@ -99,11 +99,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         
-        // Importa a biblioteca pdf.js
         const { pdfjsLib } = globalThis;
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 
-        // Sua configuração do Firebase
         const firebaseConfig = {
           apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
           authDomain: "pdf-extrator.firebaseapp.com",
@@ -201,24 +199,41 @@
         });
         
         function listenForJobUpdates(jobIds) {
-             if (unsubscribe) unsubscribe(); 
-            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('__name__', 'in', jobIds));
+            if (unsubscribe) unsubscribe(); 
+            // --- CORREÇÃO APLICADA AQUI ---
+            // A consulta agora filtra APENAS pelo userId, garantindo que todas as
+            // atualizações (incluindo 'completed' e 'failed') sejam recebidas.
+            const q = query(collection(db, "processing_queue"), where('userId', '==', userId));
+            
             unsubscribe = onSnapshot(q, (snapshot) => {
+                let processedInThisBatch = 0;
                 snapshot.docChanges().forEach((change) => {
-                    if (change.type === "modified") {
-                        const job = change.doc.data();
-                        if (job.status === 'completed' && job.result) {
-                            const existingIndex = allExtractedData.findIndex(d => d.fileName === job.fileName);
-                            if (existingIndex === -1) {
-                                allExtractedData.push({ ...job.result, fileName: job.fileName });
+                    const job = change.doc.data();
+                    // Garante que estamos lidando apenas com os jobs enviados nesta sessão
+                    if (jobIds.includes(change.doc.id)) {
+                        if (change.type === "added" || change.type === "modified") {
+                            const existingIndex = allExtractedData.findIndex(d => d.jobId === change.doc.id);
+                            
+                            if (job.status === 'completed' && job.result) {
+                                if (existingIndex === -1) {
+                                    allExtractedData.push({ ...job.result, jobId: change.doc.id, fileName: job.fileName });
+                                    processedInThisBatch++;
+                                }
+                            } else if (job.status === 'failed' && existingIndex === -1) {
+                                // Adiciona um placeholder para arquivos que falharam para contar no progresso
+                                allExtractedData.push({ jobId: change.doc.id, fileName: job.fileName, nome: `FALHA: ${job.fileName}` });
+                                showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
+                                processedInThisBatch++;
                             }
-                        } else if (job.status === 'failed') {
-                            showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
                         }
                     }
                 });
-                renderTable(); // Re-render on any change to update progress
+
+                if (processedInThisBatch > 0) {
+                    renderTable();
+                }
                 updateQueueStatus(jobIds);
+
             }, (error) => {
                 console.error("Error in snapshot listener: ", error);
                 showError("Erro de permissão ao ler os resultados. Verifique as regras de segurança do Firestore.");
@@ -226,12 +241,12 @@
         }
 
         async function updateQueueStatus(jobIds) {
-            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('status', '==', 'pending'), orderBy('createdAt'));
+            const q = query(collection(db, "processing_queue"), where('userId', '==', userId), where('status', '==', 'pending'));
             const pendingSnapshot = await getDocs(q);
             const totalInQueue = pendingSnapshot.docs.length;
             
             const completedJobs = allExtractedData.length;
-            ui.queuePosition.textContent = totalInQueue > 0 ? `${completedJobs} de ${jobIds.length} arquivos processados. ${totalInQueue} na fila.` : 'Processando...';
+            ui.queuePosition.textContent = `${completedJobs} de ${jobIds.length} arquivos processados. ${totalInQueue} na fila.`;
             
             const progress = jobIds.length > 0 ? (completedJobs / jobIds.length) * 100 : 0;
             ui.progressBar.style.width = `${progress}%`;
