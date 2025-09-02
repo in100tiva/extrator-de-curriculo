@@ -26,20 +26,8 @@ export default async function handler(request, response) {
 
         if (!jobDoc.exists || jobDoc.data().status !== 'pending') {
             console.log(`[PROCESS-JOB ${jobId}] Job não encontrado, já processado ou inválido.`);
-<<<<<<< HEAD
-=======
-            // Marca o job como falho caso o documento ainda exista, evitando pendências infinitas no front-end
-            if (jobDoc.exists) {
-                await jobRef.update({
-                    status: 'failed',
-                    finishedAt: Timestamp.now(),
-                    error: 'Job not found, already processed or invalid.'
-                }).catch(() => {});
-            }
-            // Mesmo se o job não for válido, procuramos o próximo para não quebrar a corrente
->>>>>>> cf7ddd1d62d49f9346555cb6e38067acd1396a8d
             await triggerNextJob(userId, request.headers.host);
-            return response.status(404).send('Job already processed or invalid.');
+            return response.status(200).send('Job already processed or invalid.');
         }
 
         const jobData = jobDoc.data();
