@@ -26,6 +26,8 @@ export default async function handler(request, response) {
 
         if (!jobDoc.exists || jobDoc.data().status !== 'pending') {
             console.log(`[PROCESS-JOB ${jobId}] Job não encontrado, já processado ou inválido.`);
+<<<<<<< HEAD
+=======
             // Marca o job como falho caso o documento ainda exista, evitando pendências infinitas no front-end
             if (jobDoc.exists) {
                 await jobRef.update({
@@ -35,6 +37,7 @@ export default async function handler(request, response) {
                 }).catch(() => {});
             }
             // Mesmo se o job não for válido, procuramos o próximo para não quebrar a corrente
+>>>>>>> cf7ddd1d62d49f9346555cb6e38067acd1396a8d
             await triggerNextJob(userId, request.headers.host);
             return response.status(404).send('Job already processed or invalid.');
         }
@@ -51,14 +54,12 @@ export default async function handler(request, response) {
             console.error(`[PROCESS-JOB ${jobId}] Falhou: ${result.error}`);
         }
 
-        // Após terminar, aciona o próximo
         await triggerNextJob(userId, request.headers.host);
         
         response.status(200).send(`Job ${jobId} processed.`);
 
     } catch (error) {
         console.error(`[PROCESS-JOB ${jobId}] Erro inesperado:`, error);
-        // Tenta marcar como falho mesmo em caso de erro
         await db.collection('processing_queue').doc(jobId).update({ status: 'failed', error: 'Erro interno do worker.' }).catch(() => {});
         response.status(500).send('Internal Server Error');
     }
@@ -87,22 +88,44 @@ async function triggerNextJob(userId, host) {
     }
 }
 
-
 async function callGeminiAPI(text, selectedFields) {
     const apiKey = process.env.GEMINI_API_KEY;
     const model = "gemini-2.5-flash-preview-05-20";
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const currentYear = new Date().getFullYear();
-    const systemPrompt = `Você é um assistente de RH de elite...`; // Omitido para brevidade
-    const userPrompt = `Extraia as informações...`; // Omitido para brevidade
-    const properties = { nome: { type: "STRING" } }; // Omitido para brevidade
-    const required = ["nome"];
-    if (selectedFields.includes('idade')) { /* ... */ }
-    if (selectedFields.includes('email')) { /* ... */ }
-    if (selectedFields.includes('contatos')) { /* ... */ }
-    const payload = { /* ... */ }; // Omitido para brevidade
     
-    // O corpo da função callGeminiAPI permanece o mesmo
+    const systemPrompt = `Você é um assistente de RH de elite, focado em extrair dados de textos de currículos com alta precisão.
+
+REGRAS CRÍTICAS DE EXTRAÇÃO:
+1.  **NOME**: Extraia o nome completo que geralmente aparece no topo. SEMPRE formate o nome para que a primeira letra de cada palavra seja maiúscula, exceto para conectivos como "de", "da", "do", "dos" que devem ser minúsculos. Exemplo: "RAQUEL DE OLIVEIRA SILVA" deve se tornar "Raquel de Oliveira Silva".
+2.  **IDADE**:
+    - PRIMEIRO, procure por um número seguido diretamente pela palavra "anos" (ex: "37 anos").
+    - SE NÃO ENCONTRAR, procure por uma data de nascimento (DD/MM/AAAA) e calcule a idade (ano atual: ${currentYear}).
+    - Se nenhum método funcionar, retorne 0.
+3.  **CONTATOS**:
+    - Extraia TODOS os números de telefone. Preste atenção em números próximos a "WhatsApp", "Celular", "Fone".
+    - Ignore outros números que não sejam telefones (ex: datas de experiência).
+4.  **EMAIL**: Encontre o e-mail, que sempre contém "@".
+5.  **FORMATAÇÃO DE CONTATO**: Todos os números de telefone devem ser formatados para o padrão (DD) 9 XXXX-XXXX. Se não tiver 9 dígitos no corpo, use (DD) XXXX-XXXX.
+6.  **SAÍDA**: Responda APENAS com o objeto JSON, sem nenhum texto extra. Siga o esquema JSON rigorosamente.`;
+    
+    const userPrompt = `Extraia as informações do seguinte texto de currículo:\n\n--- INÍCIO DO CURRÍCULO ---\n${text}\n--- FIM DO CURRÍCULO ---`;
+    
+    const properties = { nome: { type: "STRING" } };
+    const required = ["nome"];
+    if (selectedFields.includes('idade')) { properties.idade = { type: "NUMBER" }; required.push('idade'); }
+    if (selectedFields.includes('email')) { properties.email = { type: "STRING" }; required.push('email'); }
+    if (selectedFields.includes('contatos')) { properties.contatos = { type: "ARRAY", items: { type: "STRING" } }; required.push('contatos'); }
+
+    const payload = {
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: { type: "OBJECT", properties, required }
+        }
+    };
+    
     try {
         const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) {
@@ -119,3 +142,4 @@ async function callGeminiAPI(text, selectedFields) {
         return { success: false, error: error.message };
     }
 }
+
