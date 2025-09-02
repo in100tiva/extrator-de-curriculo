@@ -81,12 +81,14 @@ export default async function handler(request, response) {
             const resText = await res.text().catch(() => '');
             if (!res.ok) {
                 console.error(`[START] process-job retornou ${res.status} para ${firstJobId}: ${resText}`);
+                return response.status(500).send('Failed to trigger the processing job.');
             }
         } catch (err) {
             console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
+            return response.status(500).send('Failed to trigger the processing job.');
         }
 
-        response.status(202).send('Processing has been initiated.');
+        return response.status(202).send('Processing has been initiated.');
 
     } catch (error) {
         console.error(`[START] Erro ao iniciar o processamento para ${userId}:`, error);
