@@ -13,53 +13,8 @@ if (!getApps().length) {
 }
 const db = getFirestore();
 
-<<<<<<< HEAD
 // Função que executa o trabalho em segundo plano
 async function processJobInBackground(jobId, userId, host) {
-=======
-async function triggerNextJob(userId, host) {
-    const nextSnapshot = await db.collection('processing_queue')
-        .where('userId', '==', userId)
-        .where('status', '==', 'pending')
-        .orderBy('createdAt')
-        .limit(1)
-        .get();
-
-    if (!nextSnapshot.empty) {
-        const nextJobId = nextSnapshot.docs[0].id;
-        console.log(`[TRIGGER] Próximo job encontrado: ${nextJobId}. Acionando...`);
-        
-        // **CORREÇÃO APLICADA**
-        // Aguarda o despacho da requisição para o próximo job antes de finalizar.
-        try {
-            const protocol = host.includes('localhost') ? 'http' : 'https';
-            const res = await fetch(`${protocol}://${host}/api/process-job`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: nextJobId, userId: userId })
-            });
-            const resText = await res.text().catch(() => '');
-            if (!res.ok) {
-                console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${resText}`);
-            }
-        } catch (err) {
-            console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
-            // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
-            // A lógica autocorretiva no start-processing irá reiniciar a partir daqui na próxima vez.
-        }
-    } else {
-        console.log(`[TRIGGER] Fila para ${userId} finalizada.`);
-    }
-}
-
-
-export default async function handler(request, response) {
-    if (request.method !== 'POST') return response.status(405).send('Method Not Allowed');
-
-    const { jobId, userId } = request.body;
-    if (!jobId || !userId) return response.status(400).send('Job ID and User ID are required.');
-
->>>>>>> 557ca2cda9a81ea486e69bfa41e02122f7abe976
     try {
         console.log(`[PROCESS-JOB ${jobId}] Iniciando processamento...`);
         const jobRef = db.collection('processing_queue').doc(jobId);
