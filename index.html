@@ -100,8 +100,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        // Import specific pdf.js components from a stable CDN
-        import { getDocument, GlobalWorkerOptions } from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.mjs';
+        // Import the entire pdf.js library under an alias from a stable CDN
+        import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.mjs';
 
         const firebaseConfig = {
           apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
@@ -115,8 +115,8 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        // Set the worker source directly on the imported GlobalWorkerOptions
-        GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.mjs`;
+        // Set the worker source on the aliased library object
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.mjs`;
         
         const ui = {
             pdfFileInput: document.getElementById('pdfFile'),
@@ -269,7 +269,7 @@
                 fileReader.onload = async (e) => {
                     try {
                         const typedarray = new Uint8Array(e.target.result);
-                        const pdf = await getDocument({ data: typedarray }).promise;
+                        const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
                         let fullText = '';
                         for (let i = 1; i <= pdf.numPages; i++) {
                             const page = await pdf.getPage(i);
