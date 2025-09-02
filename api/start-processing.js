@@ -39,6 +39,20 @@ export default async function handler(request, response) {
             console.log(`[START] Jobs travados resetados.`);
         }
 
+        // Remove jobs já concluídos ou falhos para evitar acúmulo na fila
+        for (const status of ['completed', 'failed']) {
+            const doneSnapshot = await queueRef
+                .where('userId', '==', userId)
+                .where('status', '==', status)
+                .get();
+            if (!doneSnapshot.empty) {
+                console.log(`[START] ${doneSnapshot.size} job(s) com status '${status}' removido(s).`);
+                const batch = db.batch();
+                doneSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+        }
+
         // Procede para encontrar o primeiro job pendente
         const snapshot = await queueRef
             .where('userId', '==', userId)
@@ -60,11 +74,16 @@ export default async function handler(request, response) {
         try {
             const host = request.headers.host;
             const protocol = host.includes('localhost') ? 'http' : 'https';
-            await fetch(`${protocol}://${host}/api/process-job`, {
+            const res = await fetch(`${protocol}://${host}/api/process-job`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ jobId: firstJobId, userId: userId })
             });
+            const resText = await res.text().catch(() => '');
+            if (!res.ok) {
+                console.error(`[START] process-job retornou ${res.status}: ${resText}`);
+                return response.status(500).send('Failed to trigger the processing job.');
+            }
         } catch (err) {
             console.error(`[START] Erro CRÍTICO ao acionar o process-job para ${firstJobId}:`, err);
             // Se o disparo inicial falhar, não adianta continuar.
