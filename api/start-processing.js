@@ -69,24 +69,23 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // Dispara o trabalhador e libera o evento antes de encerrar a função.
+        // Dispara o trabalhador e aguarda a confirmação do envio.
         const host = request.headers.host;
         const protocol = host.includes('localhost') ? 'http' : 'https';
-        fetch(`${protocol}://${host}/api/process-job`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId: firstJobId, userId })
-        })
-            .then(async res => {
-                const resText = await res.text().catch(() => '');
-                if (!res.ok) console.error(`[START] process-job retornou ${res.status}: ${resText}`);
-            })
-            .catch(err => {
-                console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
+        try {
+            const res = await fetch(`${protocol}://${host}/api/process-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: firstJobId, userId })
             });
+            const resText = await res.text().catch(() => '');
+            if (!res.ok) {
+                console.error(`[START] process-job retornou ${res.status} para ${firstJobId}: ${resText}`);
+            }
+        } catch (err) {
+            console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
+        }
 
-        // Garante que o fetch seja despachado antes do término do runtime.
-        await new Promise(res => setImmediate(res));
         response.status(202).send('Processing has been initiated.');
 
     } catch (error) {

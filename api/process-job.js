@@ -26,21 +26,21 @@ async function triggerNextJob(userId, host) {
         console.log(`[TRIGGER] Próximo job encontrado: ${nextJobId}. Acionando...`);
 
         const protocol = host.includes('localhost') ? 'http' : 'https';
-        fetch(`${protocol}://${host}/api/process-job`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId: nextJobId, userId })
-        })
-            .then(async res => {
-                const resText = await res.text().catch(() => '');
-                if (!res.ok) console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${resText}`);
-            })
-            .catch(err => {
-                console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
-                // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
-                // A lógica autocorretiva no start-processing irá reiniciar a partir daqui na próxima vez.
+        try {
+            const res = await fetch(`${protocol}://${host}/api/process-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: nextJobId, userId })
             });
-        await new Promise(res => setImmediate(res));
+            const resText = await res.text().catch(() => '');
+            if (!res.ok) {
+                console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${resText}`);
+            }
+        } catch (err) {
+            console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
+            // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
+            // A lógica autocorretiva no start-processing irá reiniciar a partir daqui na próxima vez.
+        }
     } else {
         console.log(`[TRIGGER] Fila para ${userId} finalizada.`);
     }
