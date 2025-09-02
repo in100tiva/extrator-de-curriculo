@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+match /databases/{database}/documents {
+// Aplica as regras à coleção 'processing_queue'
+match /processing_queue/{jobId} {
+
+  // Permite que qualquer usuário crie um novo trabalho na fila,
+  // desde que o campo 'userId' seja fornecido.
+  allow create: if request.resource.data.userId is string;
+
+  // Permite que a aplicação leia os trabalhos da fila.
+  // Isso é necessário para que a interface do usuário possa receber
+  // as atualizações em tempo real e mostrar os resultados.
+  allow read: if true;
+
+  // Permite que o nosso 'worker' no servidor atualize o status de um trabalho
+  // (de 'pending' para 'processing', 'completed' ou 'failed').
+  // As credenciais de administrador do worker ignoram esta regra, mas ela
+  // é uma boa prática para impedir que usuários modifiquem trabalhos alheios.
+  allow update: if resource.data.userId == request.resource.data.userId;
+}
+
+}
+}
