@@ -24,20 +24,20 @@ async function triggerNextJob(userId, host) {
     if (!nextSnapshot.empty) {
         const nextJobId = nextSnapshot.docs[0].id;
         console.log(`[TRIGGER] Próximo job encontrado: ${nextJobId}. Acionando...`);
-        
-        // **CORREÇÃO APLICADA**
-        // Aguarda o despacho da requisição para o próximo job antes de finalizar.
+
+        const protocol = host.includes('localhost') ? 'http' : 'https';
         try {
-            const protocol = host.includes('localhost') ? 'http' : 'https';
-            await fetch(`${protocol}://${host}/api/process-job`, {
+            const res = await fetch(`${protocol}://${host}/api/process-job`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: nextJobId, userId: userId })
+                body: JSON.stringify({ jobId: nextJobId, userId })
             });
+            if (!res.ok) {
+                const text = await res.text();
+                console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${text}`);
+            }
         } catch (err) {
             console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
-            // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
-            // A lógica autocorretiva no start-processing irá reiniciar a partir daqui na próxima vez.
         }
     } else {
         console.log(`[TRIGGER] Fila para ${userId} finalizada.`);
@@ -76,8 +76,11 @@ export default async function handler(request, response) {
 
         // O disparo do próximo job é a última coisa a ser feita.
         await triggerNextJob(userId, request.headers.host);
-        
-        // A resposta só é enviada após todo o trabalho (incluindo o disparo do próximo) ser concluído.
+
+        // Remove o job atual para manter a fila limpa.
+        await jobRef.delete().catch(() => {});
+
+        // A resposta é enviada assim que o trabalho atual termina e o próximo job é disparado.
         return response.status(200).send(`Job ${jobId} processed and next job triggered.`);
 
     } catch (error) {

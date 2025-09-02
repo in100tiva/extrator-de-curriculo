@@ -39,6 +39,20 @@ export default async function handler(request, response) {
             console.log(`[START] Jobs travados resetados.`);
         }
 
+        // Remove jobs já concluídos ou falhos para evitar acúmulo na fila
+        for (const status of ['completed', 'failed']) {
+            const doneSnapshot = await queueRef
+                .where('userId', '==', userId)
+                .where('status', '==', status)
+                .get();
+            if (!doneSnapshot.empty) {
+                console.log(`[START] ${doneSnapshot.size} job(s) com status '${status}' removido(s).`);
+                const batch = db.batch();
+                doneSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+        }
+
         // Procede para encontrar o primeiro job pendente
         const snapshot = await queueRef
             .where('userId', '==', userId)
@@ -55,23 +69,23 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // **CORREÇÃO APLICADA**
-        // Aciona o trabalhador e AGUARDA o despacho da requisição.
+        // Dispara o trabalhador e aguarda a confirmação para garantir que a requisição seja emitida.
+        const host = request.headers.host;
+        const protocol = host.includes('localhost') ? 'http' : 'https';
         try {
-            const host = request.headers.host;
-            const protocol = host.includes('localhost') ? 'http' : 'https';
-            await fetch(`${protocol}://${host}/api/process-job`, {
+            const res = await fetch(`${protocol}://${host}/api/process-job`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: firstJobId, userId: userId })
+                body: JSON.stringify({ jobId: firstJobId, userId })
             });
+            if (!res.ok) {
+                const text = await res.text();
+                console.error(`[START] process-job retornou ${res.status} para ${firstJobId}: ${text}`);
+            }
         } catch (err) {
-            console.error(`[START] Erro CRÍTICO ao acionar o process-job para ${firstJobId}:`, err);
-            // Se o disparo inicial falhar, não adianta continuar.
-            return response.status(500).send('Failed to trigger the processing job.');
+            console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
         }
-
-        response.status(202).send('Processing has been initiated.');
+        return response.status(202).send('Processing has been initiated.');
 
     } catch (error) {
         console.error(`[START] Erro ao iniciar o processamento para ${userId}:`, error);
