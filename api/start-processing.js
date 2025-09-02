@@ -69,25 +69,25 @@ export default async function handler(request, response) {
         const firstJobId = snapshot.docs[0].id;
         console.log(`[START] Primeiro job pendente encontrado: ${firstJobId}. Acionando o processador...`);
 
-        // Dispara o trabalhador e aguarda a confirmação do envio.
+        // Dispara o trabalhador sem aguardar a resposta para não bloquear o runtime.
         const host = request.headers.host;
         const protocol = host.includes('localhost') ? 'http' : 'https';
-        try {
-            const res = await fetch(`${protocol}://${host}/api/process-job`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: firstJobId, userId })
+        fetch(`${protocol}://${host}/api/process-job`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId: firstJobId, userId })
+        })
+            .then(res => {
+                if (!res.ok) {
+                    res.text().then(t => console.error(`[START] process-job retornou ${res.status} para ${firstJobId}: ${t}`));
+                }
+            })
+            .catch(err => {
+                console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
             });
-            const resText = await res.text().catch(() => '');
-            if (!res.ok) {
-                console.error(`[START] process-job retornou ${res.status} para ${firstJobId}: ${resText}`);
-                return response.status(500).send('Failed to trigger the processing job.');
-            }
-        } catch (err) {
-            console.error(`[START] Erro ao acionar o process-job para ${firstJobId}:`, err);
-            return response.status(500).send('Failed to trigger the processing job.');
-        }
 
+        // Garante que o fetch seja despachado antes de encerrar a função.
+        await new Promise(res => setImmediate(res));
         return response.status(202).send('Processing has been initiated.');
 
     } catch (error) {

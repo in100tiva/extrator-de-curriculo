@@ -26,21 +26,22 @@ async function triggerNextJob(userId, host) {
         console.log(`[TRIGGER] Próximo job encontrado: ${nextJobId}. Acionando...`);
 
         const protocol = host.includes('localhost') ? 'http' : 'https';
-        try {
-            const res = await fetch(`${protocol}://${host}/api/process-job`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId: nextJobId, userId })
+        fetch(`${protocol}://${host}/api/process-job`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId: nextJobId, userId })
+        })
+            .then(res => {
+                if (!res.ok) {
+                    res.text().then(t => console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${t}`));
+                }
+            })
+            .catch(err => {
+                console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
             });
-            const resText = await res.text().catch(() => '');
-            if (!res.ok) {
-                console.error(`[TRIGGER] process-job retornou ${res.status} para ${nextJobId}: ${resText}`);
-            }
-        } catch (err) {
-            console.error(`[TRIGGER] Erro ao acionar o próximo job ${nextJobId}:`, err);
-            // Se o trigger falhar, a cadeia para, mas o job atual foi processado.
-            // A lógica autocorretiva no start-processing irá reiniciar a partir daqui na próxima vez.
-        }
+
+        // Aguarda um tick para garantir o envio antes de encerrar.
+        await new Promise(res => setImmediate(res));
     } else {
         console.log(`[TRIGGER] Fila para ${userId} finalizada.`);
     }
@@ -78,6 +79,9 @@ export default async function handler(request, response) {
 
         // O disparo do próximo job é a última coisa a ser feita.
         await triggerNextJob(userId, request.headers.host);
+
+        // Remove o job atual para manter a fila limpa.
+        await jobRef.delete().catch(() => {});
 
         // A resposta é enviada assim que o trabalho atual termina e o próximo job é disparado.
         return response.status(200).send(`Job ${jobId} processed and next job triggered.`);
