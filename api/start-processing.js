@@ -31,10 +31,10 @@ export default async function handler(request, response) {
         const cleanupResult = await cleanupStuckJobs(userId);
         console.log(`[START-PROCESSING] Limpeza: ${cleanupResult.reset} jobs resetados, ${cleanupResult.failed} marcados como failed`);
 
-        // ETAPA 3: Encontrar o primeiro job pendente
-        const firstJob = await findFirstPendingJob(userId);
+        // ETAPA 3: Encontrar jobs pendentes (múltiplos para processamento paralelo limitado)
+        const pendingJobs = await findPendingJobs(userId, 3); // Máximo 3 simultâneos
         
-        if (!firstJob) {
+        if (!pendingJobs || pendingJobs.length === 0) {
             console.log(`[START-PROCESSING] ✅ Nenhum job pendente encontrado para ${userId}`);
             return response.status(200).json({ 
                 success: true, 
@@ -42,23 +42,27 @@ export default async function handler(request, response) {
             });
         }
 
-        console.log(`[START-PROCESSING] 🎯 Primeiro job pendente: ${firstJob.id} (${firstJob.data.fileName})`);
+        console.log(`[START-PROCESSING] 🎯 ${pendingJobs.length} job(s) pendente(s) encontrado(s)`);
 
-        // ETAPA 4: Disparar o primeiro job
-        const triggerResult = await triggerFirstJob(firstJob.id, userId);
+        // ETAPA 4: Disparar jobs com delay escalonado
+        const triggerResults = await triggerMultipleJobs(pendingJobs, userId);
         
-        if (triggerResult.success) {
-            console.log(`[START-PROCESSING] ✅ Processamento iniciado com sucesso`);
+        const successfulJobs = triggerResults.filter(r => r.success).length;
+        const failedJobs = triggerResults.filter(r => !r.success).length;
+
+        if (successfulJobs > 0) {
+            console.log(`[START-PROCESSING] ✅ ${successfulJobs} job(s) iniciado(s) com sucesso, ${failedJobs} falharam`);
             return response.status(202).json({ 
                 success: true, 
-                message: `Processing started with job ${firstJob.id}`,
-                jobId: firstJob.id 
+                message: `Processing started for ${successfulJobs} jobs`,
+                successful: successfulJobs,
+                failed: failedJobs
             });
         } else {
-            console.error(`[START-PROCESSING] ❌ Falha ao disparar primeiro job: ${triggerResult.error}`);
+            console.error(`[START-PROCESSING] ❌ Falha ao disparar todos os jobs`);
             return response.status(500).json({ 
                 success: false, 
-                error: 'Failed to trigger first job' 
+                error: 'Failed to trigger any jobs' 
             });
         }
 
@@ -182,79 +186,98 @@ async function cleanupStuckJobs(userId) {
 }
 
 /**
- * Encontra o primeiro job pendente
+ * Encontra múltiplos jobs pendentes (para processamento paralelo limitado)
  */
-async function findFirstPendingJob(userId) {
+async function findPendingJobs(userId, limit = 3) {
     try {
         const pendingSnapshot = await db.collection('processing_queue')
             .where('userId', '==', userId)
             .where('status', '==', 'pending')
             .orderBy('createdAt', 'asc')
-            .limit(1)
+            .limit(limit)
             .get();
 
         if (pendingSnapshot.empty) {
-            return null;
+            return [];
         }
 
-        const doc = pendingSnapshot.docs[0];
-        return {
+        return pendingSnapshot.docs.map(doc => ({
             id: doc.id,
             data: doc.data()
-        };
+        }));
 
     } catch (error) {
-        console.error('[FIND-FIRST] Erro ao buscar primeiro job:', error);
-        return null;
+        console.error('[FIND-PENDING] Erro ao buscar jobs pendentes:', error);
+        return [];
     }
 }
 
 /**
- * Dispara o primeiro job da fila
+ * Dispara múltiplos jobs com delay escalonado
  */
-async function triggerFirstJob(jobId, userId) {
-    try {
-        const baseUrl = getBaseUrl();
-        console.log(`[TRIGGER] Disparando job ${jobId} via ${baseUrl}/api/process-job`);
-
-        const response = await fetch(`${baseUrl}/api/process-job`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'vercel-function'
-            },
-            body: JSON.stringify({ jobId, userId }),
-            timeout: 8000 // 8 segundos de timeout
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Erro desconhecido');
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        const result = await response.json().catch(() => ({ success: true }));
-        console.log(`[TRIGGER] ✅ Job ${jobId} disparado:`, result);
-
-        return { success: true, result };
-
-    } catch (error) {
-        console.error(`[TRIGGER] ❌ Erro ao disparar job ${jobId}:`, error);
+async function triggerMultipleJobs(jobs, userId) {
+    const results = [];
+    
+    console.log(`[TRIGGER-MULTIPLE] Disparando ${jobs.length} job(s) com delay escalonado...`);
+    
+    // Dispara jobs com delay de 1 segundo entre cada um
+    for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
         
-        // Em caso de erro, tenta marcar o job como failed para não travar a fila
-        try {
-            await db.collection('processing_queue').doc(jobId).update({
-                status: 'failed',
-                finishedAt: Timestamp.now(),
-                error: `Falha ao disparar job: ${error.message}`,
-                triggerFailed: true
-            });
-            console.log(`[TRIGGER] Job ${jobId} marcado como failed devido a erro no disparo`);
-        } catch (updateError) {
-            console.error(`[TRIGGER] Erro ao marcar job como failed:`, updateError);
+        // Delay antes de disparar (exceto o primeiro)
+        if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
+        
+        console.log(`[TRIGGER-MULTIPLE] Disparando job ${i + 1}/${jobs.length}: ${job.id} (${job.data.fileName})`);
+        
+        try {
+            const baseUrl = getBaseUrl();
+            
+            // Timeout de 5 segundos para o disparo (não para o processamento)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const response = await fetch(`${baseUrl}/api/process-job`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'vercel-function'
+                },
+                body: JSON.stringify({ jobId: job.id, userId }),
+                signal: controller.signal
+            });
 
-        return { success: false, error: error.message };
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                console.log(`[TRIGGER-MULTIPLE] ✅ Job ${job.id} disparado com sucesso`);
+                results.push({ success: true, jobId: job.id });
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+        } catch (error) {
+            console.error(`[TRIGGER-MULTIPLE] ❌ Erro ao disparar job ${job.id}:`, error);
+            
+            // Marca job como failed para não travar a fila
+            try {
+                await db.collection('processing_queue').doc(job.id).update({
+                    status: 'failed',
+                    finishedAt: Timestamp.now(),
+                    error: `Falha no disparo: ${error.message}`,
+                    triggerFailed: true
+                });
+                console.log(`[TRIGGER-MULTIPLE] Job ${job.id} marcado como failed`);
+            } catch (updateError) {
+                console.error(`[TRIGGER-MULTIPLE] Erro ao marcar job como failed:`, updateError);
+            }
+            
+            results.push({ success: false, jobId: job.id, error: error.message });
+        }
     }
+    
+    return results;
 }
 
 /**

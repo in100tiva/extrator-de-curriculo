@@ -300,12 +300,25 @@ IMPORTANTE: Sempre complete o JSON! Não truncar a resposta no meio.`;
 }
 
 /**
- * Processa próximo job da fila
+ * Processa próximo job da fila (apenas se não há outros processando)
  */
 async function processNextJob(userId) {
     try {
-        console.log(`[NEXT-JOB] Procurando próximo job para ${userId}...`);
+        console.log(`[NEXT-JOB] Verificando se há próximo job para ${userId}...`);
         
+        // Primeiro verifica se já há jobs sendo processados
+        const processingSnapshot = await db.collection('processing_queue')
+            .where('userId', '==', userId)
+            .where('status', '==', 'processing')
+            .limit(1)
+            .get();
+
+        if (!processingSnapshot.empty) {
+            console.log(`[NEXT-JOB] ⏸️ Já há job(s) sendo processado(s), não disparando novo`);
+            return;
+        }
+        
+        // Procura próximo job pendente
         const nextJobSnapshot = await db.collection('processing_queue')
             .where('userId', '==', userId)
             .where('status', '==', 'pending')
@@ -323,6 +336,17 @@ async function processNextJob(userId) {
         
         console.log(`[NEXT-JOB] 🎯 Próximo job encontrado: ${nextJobId} (${nextJobData.fileName})`);
         
+        // Dispara apenas se não há timeout muito recente (evita loops)
+        const now = Date.now();
+        const lastCall = processNextJob._lastCall || 0;
+        
+        if (now - lastCall < 2000) { // 2 segundos de cooldown
+            console.log(`[NEXT-JOB] ⏸️ Cooldown ativo, pulando disparo`);
+            return;
+        }
+        
+        processNextJob._lastCall = now;
+        
         // Chama recursivamente o processamento
         const response = await fetch(`${getBaseUrl()}/api/process-job`, {
             method: 'POST',
@@ -330,10 +354,10 @@ async function processNextJob(userId) {
             body: JSON.stringify({ jobId: nextJobId, userId: userId })
         });
 
-        if (!response.ok) {
-            console.error(`[NEXT-JOB] ❌ Erro HTTP ${response.status} ao chamar próximo job`);
-        } else {
+        if (response.ok) {
             console.log(`[NEXT-JOB] ✅ Próximo job ${nextJobId} disparado com sucesso`);
+        } else {
+            console.error(`[NEXT-JOB] ❌ Erro HTTP ${response.status} ao chamar próximo job`);
         }
         
     } catch (error) {
