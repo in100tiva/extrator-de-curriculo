@@ -2,18 +2,19 @@
   "functions": {
     "api/process-single.js": {
       "maxDuration": 8,
-      "memory": 1024,
-      "regions": ["iad1"]
+      "memory": 1024
     },
     "api/start-processing.js": {
       "maxDuration": 5,
-      "memory": 512,
-      "regions": ["iad1"]
+      "memory": 512
     },
     "api/cleanup-jobs.js": {
       "maxDuration": 10,
-      "memory": 512,
-      "regions": ["iad1"]
+      "memory": 512
+    },
+    "api/queue-status.js": {
+      "maxDuration": 5,
+      "memory": 512
     }
   },
   "rewrites": [
@@ -36,7 +37,7 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "POST, OPTIONS"
+          "value": "POST, GET, OPTIONS"
         },
         {
           "key": "Access-Control-Allow-Headers",
@@ -61,8 +62,5 @@
         }
       ]
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
