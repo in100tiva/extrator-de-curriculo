@@ -1,20 +1,16 @@
 {
   "functions": {
-    "api/process-single.js": {
-      "maxDuration": 8,
-      "memory": 1024
+    "api/process-batch.js": {
+      "maxDuration": 10
     },
     "api/start-processing.js": {
-      "maxDuration": 5,
-      "memory": 512
-    },
-    "api/cleanup-jobs.js": {
-      "maxDuration": 10,
-      "memory": 512
+      "maxDuration": 10
     },
     "api/queue-status.js": {
-      "maxDuration": 5,
-      "memory": 512
+      "maxDuration": 5
+    },
+    "api/cleanup-jobs.js": {
+      "maxDuration": 10
     }
   },
   "rewrites": [
@@ -36,29 +32,8 @@
           "value": "*"
         },
         {
-          "key": "Access-Control-Allow-Methods",
-          "value": "POST, GET, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type"
-        }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
+          "key": "Access-Control-Allow-Methods", 
+          "value": "GET, POST, OPTIONS"
         }
       ]
     }
