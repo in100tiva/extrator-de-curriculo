@@ -1,170 +1,144 @@
-// api/process-batch.js - Nova API para processamento em lote otimizado
+// api/process-batch.js
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
+// Initialize Firebase Admin
 if (!getApps().length) {
     try {
         const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
         initializeApp({ credential: cert(serviceAccount) });
     } catch (e) {
-        console.error("ERRO: Falha na inicialização do Firebase Admin.", e);
+        console.error("Firebase Admin initialization error:", e);
         throw e;
     }
 }
 const db = getFirestore();
 
-export const config = {
-    maxDuration: 10, // 10 segundos máximo na Vercel
-};
-
 export default async function handler(request, response) {
-    if (request.method !== 'POST') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
-    }
-
-    const startTime = Date.now();
-    const { userId, batchSize = 5 } = request.body; // Reduzido para 5 por batch
-    
-    if (!userId) {
-        return response.status(400).json({ error: 'User ID is required' });
-    }
-
-    console.log(`[BATCH-PROCESSOR] Iniciando para ${userId}, batch size: ${batchSize}`);
+    // Set timeout warning
+    const timeoutWarning = setTimeout(() => {
+        console.log('[PROCESS-BATCH] ⚠️ Approaching timeout limit (8s)');
+    }, 8000);
 
     try {
-        // 1. Buscar jobs pendentes (consulta simples)
-        const pendingJobs = await findPendingJobs(userId, batchSize);
-        
-        if (pendingJobs.length === 0) {
-            return response.status(200).json({ 
-                success: true, 
-                processed: 0,
-                message: 'Nenhum job pendente encontrado'
-            });
+        if (request.method !== 'POST') {
+            return response.status(405).json({ error: 'Method not allowed' });
         }
 
-        console.log(`[BATCH-PROCESSOR] ${pendingJobs.length} jobs encontrados`);
-
-        // 2. Processar jobs em paralelo (Promise.all)
-        const processPromises = pendingJobs.map(job => 
-            processJobDirectly(job.id, job.data, userId)
-        );
-
-        // 3. Aguardar todos com timeout de 8 segundos
-        const results = await Promise.allSettled(processPromises);
-        
-        const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-        const failed = results.filter(r => r.status === 'rejected' || !r.value?.success).length;
-
-        // 4. Disparar próximo batch se ainda há jobs pendentes
-        const hasMoreJobs = await checkForMoreJobs(userId);
-        if (hasMoreJobs) {
-            // Fire-and-forget para próximo batch
-            setTimeout(() => {
-                fetch(`${getBaseUrl()}/api/process-batch`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, batchSize })
-                }).catch(err => console.error('[BATCH] Erro ao disparar próximo batch:', err));
-            }, 2000); // 2 segundos de delay
+        const { userId, jobIds } = request.body;
+        if (!userId || !jobIds || !Array.isArray(jobIds)) {
+            return response.status(400).json({ error: 'Invalid request parameters' });
         }
 
-        const duration = Date.now() - startTime;
-        console.log(`[BATCH-PROCESSOR] ✅ Concluído em ${duration}ms: ${successful} sucessos, ${failed} falhas`);
+        console.log(`[PROCESS-BATCH] Processing batch of ${jobIds.length} jobs for user ${userId}`);
+
+        // Process jobs in parallel with concurrency limit
+        const CONCURRENT_LIMIT = 3; // Process 3 at a time
+        const results = [];
+        
+        for (let i = 0; i < jobIds.length; i += CONCURRENT_LIMIT) {
+            const batch = jobIds.slice(i, i + CONCURRENT_LIMIT);
+            const batchPromises = batch.map(jobId => processJob(jobId, userId));
+            const batchResults = await Promise.allSettled(batchPromises);
+            results.push(...batchResults);
+            
+            // Small delay between sub-batches to avoid rate limiting
+            if (i + CONCURRENT_LIMIT < jobIds.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+
+        console.log(`[PROCESS-BATCH] Completed: ${successful} success, ${failed} failed`);
+        clearTimeout(timeoutWarning);
 
         return response.status(200).json({
             success: true,
             processed: successful,
             failed: failed,
-            duration: duration,
-            hasMoreJobs: hasMoreJobs
+            total: jobIds.length
         });
 
     } catch (error) {
-        console.error('[BATCH-PROCESSOR] Erro crítico:', error);
-        return response.status(200).json({ // Sempre 200 para não travar
-            success: false,
-            error: error.message,
-            processed: 0
+        console.error('[PROCESS-BATCH] Error:', error);
+        clearTimeout(timeoutWarning);
+        return response.status(500).json({ 
+            error: 'Batch processing error',
+            message: error.message 
         });
     }
 }
 
-// Busca jobs pendentes com consulta simples (sem índices complexos)
-async function findPendingJobs(userId, limit) {
+async function processJob(jobId, userId) {
     try {
-        const snapshot = await db.collection('processing_queue')
-            .where('userId', '==', userId)
-            .where('status', '==', 'pending')
-            .limit(limit)
-            .get();
-
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            data: doc.data()
-        }));
-    } catch (error) {
-        console.error('[FIND-JOBS] Erro:', error);
-        return [];
-    }
-}
-
-// Verifica se ainda há jobs para processar
-async function checkForMoreJobs(userId) {
-    try {
-        const snapshot = await db.collection('processing_queue')
-            .where('userId', '==', userId)
-            .where('status', '==', 'pending')
-            .limit(1)
-            .get();
-        
-        return !snapshot.empty;
-    } catch (error) {
-        return false;
-    }
-}
-
-// Processa um job diretamente (sem HTTP calls)
-async function processJobDirectly(jobId, jobData, userId) {
-    try {
-        console.log(`[DIRECT-PROCESS] Processando ${jobId}: ${jobData.fileName}`);
-
-        // Marca como processando
         const jobRef = db.collection('processing_queue').doc(jobId);
-        await jobRef.update({
-            status: 'processing',
-            startedAt: Timestamp.now()
+        
+        // Use transaction for atomic claim
+        const result = await db.runTransaction(async (transaction) => {
+            const jobDoc = await transaction.get(jobRef);
+            
+            if (!jobDoc.exists) {
+                throw new Error('Job not found');
+            }
+
+            const jobData = jobDoc.data();
+            
+            // Verify ownership and status
+            if (jobData.userId !== userId) {
+                throw new Error('Unauthorized');
+            }
+            
+            if (jobData.status !== 'pending') {
+                return { skipped: true, status: jobData.status };
+            }
+
+            // Mark as processing
+            transaction.update(jobRef, {
+                status: 'processing',
+                startedAt: Timestamp.now()
+            });
+
+            return { jobData, shouldProcess: true };
         });
 
-        // Processa com Gemini
-        let result = await processWithGeminiOptimized(jobData.text, jobData.selectedFields);
-        
-        // Fallback se necessário
-        if (!result.success) {
-            result = extractWithSimpleFallback(jobData.text, jobData.selectedFields, jobData.fileName);
+        if (result.skipped) {
+            console.log(`[PROCESS-JOB ${jobId}] Skipped (status: ${result.status})`);
+            return { jobId, skipped: true };
         }
 
-        // Salva resultado
-        if (result.success) {
-            await jobRef.update({
-                status: 'completed',
-                finishedAt: Timestamp.now(),
-                result: result.data
-            });
-        } else {
-            await jobRef.update({
-                status: 'failed',
-                finishedAt: Timestamp.now(),
-                error: result.error
-            });
+        if (!result.shouldProcess) {
+            return { jobId, skipped: true };
         }
 
-        return result;
+        // Extract data with Gemini API
+        const extractionResult = await extractWithGemini(
+            result.jobData.text,
+            result.jobData.selectedFields,
+            jobId
+        );
+
+        // Update with results
+        await jobRef.update({
+            status: extractionResult.success ? 'completed' : 'failed',
+            finishedAt: Timestamp.now(),
+            ...(extractionResult.success 
+                ? { result: extractionResult.data }
+                : { error: extractionResult.error })
+        });
+
+        console.log(`[PROCESS-JOB ${jobId}] ${extractionResult.success ? '✅ Success' : '❌ Failed'}`);
+        return { 
+            jobId, 
+            success: extractionResult.success,
+            data: extractionResult.data 
+        };
 
     } catch (error) {
-        console.error(`[DIRECT-PROCESS] Erro no job ${jobId}:`, error);
+        console.error(`[PROCESS-JOB ${jobId}] Error:`, error.message);
         
-        // Marca como falha
+        // Try to mark as failed
         try {
             await db.collection('processing_queue').doc(jobId).update({
                 status: 'failed',
@@ -172,49 +146,68 @@ async function processJobDirectly(jobId, jobData, userId) {
                 error: error.message
             });
         } catch (updateError) {
-            console.error('[DIRECT-PROCESS] Erro ao marcar falha:', updateError);
+            console.error(`[PROCESS-JOB ${jobId}] Failed to update status:`, updateError);
         }
-
-        return { success: false, error: error.message };
+        
+        throw error;
     }
 }
 
-// Processamento Gemini otimizado
-async function processWithGeminiOptimized(text, selectedFields) {
+async function extractWithGemini(text, selectedFields, jobId) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        return { success: false, error: 'API Key não configurada' };
+        return fallbackExtraction(text, selectedFields);
     }
 
     try {
-        // Texto mais curto para acelerar
-        const shortText = text.length > 1500 ? text.substring(0, 1500) : text;
+        const currentYear = new Date().getFullYear();
+        const truncatedText = text.substring(0, 2000); // Limit text size
         
-        // Prompt mais simples e direto
-        const prompt = `Extraia do currículo:\n\n${shortText}\n\nResposta (apenas JSON):`;
-        
-        // Schema mínimo
+        // Build dynamic schema based on selected fields
         const properties = { nome: { type: "STRING" } };
-        if (selectedFields.includes('idade')) properties.idade = { type: "NUMBER" };
-        if (selectedFields.includes('email')) properties.email = { type: "STRING" };
-        if (selectedFields.includes('contatos')) properties.contatos = { type: "ARRAY", items: { type: "STRING" } };
+        const required = ["nome"];
+        
+        if (selectedFields.includes('idade')) {
+            properties.idade = { type: "NUMBER" };
+            required.push('idade');
+        }
+        if (selectedFields.includes('email')) {
+            properties.email = { type: "STRING" };
+            required.push('email');
+        }
+        if (selectedFields.includes('contatos')) {
+            properties.contatos = { type: "ARRAY", items: { type: "STRING" } };
+            required.push('contatos');
+        }
+
+        const prompt = `Extract resume data from the following text. 
+Current year is ${currentYear}.
+For age: Look for "X anos" or calculate from birth date.
+For contacts: Format as (DD) 9XXXX-XXXX.
+Return ONLY valid JSON.
+
+Text: ${truncatedText}`;
 
         const payload = {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
                 responseMimeType: "application/json",
-                responseSchema: { type: "OBJECT", properties },
-                maxOutputTokens: 200, // Reduzido para acelerar
-                temperature: 0
+                responseSchema: {
+                    type: "OBJECT",
+                    properties,
+                    required
+                },
+                temperature: 0,
+                maxOutputTokens: 256
             }
         };
 
-        // Timeout agressivo de 3 segundos
+        // Tight timeout for Gemini API
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
-        
+
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -222,70 +215,96 @@ async function processWithGeminiOptimized(text, selectedFields) {
                 signal: controller.signal
             }
         );
-        
+
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-            throw new Error(`API HTTP ${response.status}`);
+            throw new Error(`Gemini API error: ${response.status}`);
         }
 
         const result = await response.json();
-        const extracted = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
         
-        if (!extracted) {
-            throw new Error('Resposta vazia da API');
+        if (!content) {
+            throw new Error('No content from Gemini');
         }
 
-        return { success: true, data: JSON.parse(extracted) };
+        const parsedData = JSON.parse(content);
+        
+        // Validate and clean data
+        if (parsedData.idade && (parsedData.idade < 14 || parsedData.idade > 100)) {
+            parsedData.idade = 0;
+        }
+        
+        return { success: true, data: parsedData };
 
     } catch (error) {
-        if (error.name === 'AbortError') {
-            return { success: false, error: 'Timeout Gemini (3s)' };
-        }
-        return { success: false, error: `Gemini: ${error.message}` };
+        console.log(`[GEMINI ${jobId}] Error, using fallback:`, error.message);
+        return fallbackExtraction(text, selectedFields);
     }
 }
 
-// Fallback simples e rápido
-function extractWithSimpleFallback(text, selectedFields, fileName) {
-    const result = { nome: fileName.replace(/\.pdf$/i, '') || 'Nome não encontrado' };
+function fallbackExtraction(text, selectedFields) {
+    const result = { nome: 'Nome não identificado' };
     
     try {
-        // Nome - busca padrão simples
-        const nomeMatch = text.match(/^([A-ZÀÁÂÃÄ][a-zàáâãä\s]{5,40})/m);
-        if (nomeMatch) {
-            result.nome = nomeMatch[1].trim();
+        // Extract name - simple pattern matching
+        const namePatterns = [
+            /^([A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ][a-zàáâãäéêëíîïóôõöúûüç]+(?: [A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ][a-zàáâãäéêëíîïóôõöúûüç]+)+)/m,
+            /Nome:?\s*([A-ZÀÁÂÃÄÉÊËÍÎÏÓÔÕÖÚÛÜÇ][^\n\r]{5,50})/i
+        ];
+        
+        for (const pattern of namePatterns) {
+            const match = text.match(pattern);
+            if (match?.[1]) {
+                result.nome = match[1].trim();
+                break;
+            }
         }
-
-        // Idade - busca "X anos"
+        
+        // Extract age if needed
         if (selectedFields.includes('idade')) {
-            const idadeMatch = text.match(/(\d{2})\s*anos?\b/i);
-            result.idade = idadeMatch ? parseInt(idadeMatch[1]) : 0;
+            const ageMatch = text.match(/(\d{1,2})\s*anos/i);
+            if (ageMatch) {
+                const age = parseInt(ageMatch[1]);
+                result.idade = (age >= 14 && age <= 100) ? age : 0;
+            } else {
+                result.idade = 0;
+            }
         }
-
-        // Email - busca @
+        
+        // Extract email if needed
         if (selectedFields.includes('email')) {
             const emailMatch = text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
             result.email = emailMatch ? emailMatch[1].toLowerCase() : '';
         }
-
-        // Contatos - busca números
+        
+        // Extract contacts if needed
         if (selectedFields.includes('contatos')) {
-            const phones = text.match(/(?:\(?\d{2}\)?\s*)?[9]?\d{4,5}[\s-]?\d{4}/g);
-            result.contatos = phones ? phones.slice(0, 2) : []; // Máximo 2
+            const phoneMatches = text.matchAll(/\(?\d{2}\)?\s*9?\d{4,5}[\s-]?\d{4}/g);
+            const contacts = [];
+            
+            for (const match of phoneMatches) {
+                const cleaned = match[0].replace(/\D/g, '');
+                if (cleaned.length >= 10 && cleaned.length <= 11) {
+                    const formatted = cleaned.length === 11
+                        ? `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7)}`
+                        : `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`;
+                    contacts.push(formatted);
+                    if (contacts.length >= 2) break; // Limit to 2 contacts
+                }
+            }
+            
+            result.contatos = contacts;
         }
-
+        
+        return { success: true, data: result };
+        
     } catch (error) {
-        console.error('[FALLBACK] Erro:', error);
+        console.error('[FALLBACK] Extraction error:', error);
+        return { 
+            success: true, // Still mark as success to not block the queue
+            data: { nome: 'Erro na extração', ...result }
+        };
     }
-
-    return { success: true, data: result };
-}
-
-// URL base otimizada
-function getBaseUrl() {
-    if (process.env.VERCEL_URL) {
-        return `https://${process.env.VERCEL_URL}`;
-    }
-    return 'https://pdf.in100tiva.com';
 }

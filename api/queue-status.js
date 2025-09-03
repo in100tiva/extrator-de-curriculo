@@ -1,106 +1,125 @@
-// api/queue-status.js - API para verificar status da fila
+// api/queue-status.js
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
+// Initialize Firebase Admin
 if (!getApps().length) {
     try {
         const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
         initializeApp({ credential: cert(serviceAccount) });
     } catch (e) {
-        console.error("ERRO: Falha na inicialização do Firebase Admin.", e);
+        console.error("Firebase Admin initialization error:", e);
         throw e;
     }
 }
 const db = getFirestore();
 
-export const config = {
-    maxDuration: 5,
-};
-
 export default async function handler(request, response) {
-    if (request.method !== 'GET') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
-    }
+    // Enable CORS
+    response.setHeader('Access-Control-Allow-Origin', '*');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    const { userId } = request.query;
-    if (!userId) {
-        return response.status(400).json({ error: 'User ID is required' });
+    if (request.method === 'OPTIONS') {
+        return response.status(200).end();
+    }
+
+    if (request.method !== 'POST') {
+        return response.status(405).json({ error: 'Method not allowed' });
     }
 
     try {
-        // Consulta simples para obter todos os jobs do usuário
-        const snapshot = await db.collection('processing_queue')
-            .where('userId', '==', userId)
-            .limit(500) // Limite para não sobrecarregar
-            .get();
+        const { userId, jobIds } = request.body;
+        
+        if (!userId) {
+            return response.status(400).json({ error: 'User ID is required' });
+        }
 
-        if (snapshot.empty) {
+        // Get status for specific jobs or all user jobs
+        let query = db.collection('processing_queue')
+            .where('userId', '==', userId);
+        
+        // Add time limit to avoid querying old jobs
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+        query = query.where('createdAt', '>=', oneDayAgo);
+        
+        if (jobIds && Array.isArray(jobIds) && jobIds.length > 0) {
+            // Firestore 'in' query is limited to 10 items
+            const batchSize = 10;
+            const results = [];
+            
+            for (let i = 0; i < jobIds.length; i += batchSize) {
+                const batch = jobIds.slice(i, i + batchSize);
+                const snapshot = await db.collection('processing_queue')
+                    .where('userId', '==', userId)
+                    .where('__name__', 'in', batch)
+                    .get();
+                
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    results.push({
+                        jobId: doc.id,
+                        status: data.status,
+                        fileName: data.fileName,
+                        error: data.error,
+                        createdAt: data.createdAt?.toDate(),
+                        finishedAt: data.finishedAt?.toDate()
+                    });
+                });
+            }
+            
             return response.status(200).json({
-                total: 0,
-                pending: 0,
-                processing: 0,
-                completed: 0,
-                failed: 0,
-                progress: 100
+                success: true,
+                jobs: results,
+                stats: calculateStats(results)
+            });
+        } else {
+            // Get all recent jobs for user
+            const snapshot = await query.limit(200).get();
+            
+            const jobs = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    jobId: doc.id,
+                    status: data.status,
+                    fileName: data.fileName,
+                    error: data.error,
+                    createdAt: data.createdAt?.toDate(),
+                    finishedAt: data.finishedAt?.toDate()
+                };
+            });
+            
+            return response.status(200).json({
+                success: true,
+                jobs: jobs,
+                stats: calculateStats(jobs)
             });
         }
-
-        // Conta status localmente (sem consultas múltiplas)
-        const stats = {
-            total: 0,
-            pending: 0,
-            processing: 0,
-            completed: 0,
-            failed: 0
-        };
-
-        snapshot.docs.forEach(doc => {
-            const status = doc.data().status || 'pending';
-            stats.total++;
-            stats[status] = (stats[status] || 0) + 1;
-        });
-
-        // Calcula progresso
-        const finished = stats.completed + stats.failed;
-        const progress = stats.total > 0 ? Math.round((finished / stats.total) * 100) : 0;
-
-        // Dispara próximo batch se há jobs pendentes e nenhum processando
-        if (stats.pending > 0 && stats.processing === 0) {
-            console.log(`[QUEUE-STATUS] Disparando batch para ${userId} - ${stats.pending} pendentes`);
-            
-            setTimeout(() => {
-                fetch(`${getBaseUrl()}/api/process-batch`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, batchSize: 5 })
-                }).catch(err => console.error('[QUEUE-STATUS] Erro ao disparar batch:', err));
-            }, 100);
-        }
-
-        return response.status(200).json({
-            ...stats,
-            progress,
-            isComplete: progress >= 100,
-            needsProcessing: stats.pending > 0 && stats.processing === 0
-        });
-
     } catch (error) {
-        console.error(`[QUEUE-STATUS] Erro para ${userId}:`, error);
-        return response.status(200).json({
-            error: 'Erro ao verificar status',
-            total: 0,
-            pending: 0,
-            processing: 0,
-            completed: 0,
-            failed: 0,
-            progress: 0
+        console.error('[QUEUE-STATUS] Error:', error);
+        return response.status(500).json({ 
+            error: 'Failed to get queue status',
+            message: error.message 
         });
     }
 }
 
-function getBaseUrl() {
-    if (process.env.VERCEL_URL) {
-        return `https://${process.env.VERCEL_URL}`;
-    }
-    return 'https://pdf.in100tiva.com';
+function calculateStats(jobs) {
+    const stats = {
+        total: jobs.length,
+        pending: 0,
+        processing: 0,
+        completed: 0,
+        failed: 0
+    };
+    
+    jobs.forEach(job => {
+        if (job.status === 'pending') stats.pending++;
+        else if (job.status === 'processing') stats.processing++;
+        else if (job.status === 'completed') stats.completed++;
+        else if (job.status === 'failed') stats.failed++;
+    });
+    
+    return stats;
 }

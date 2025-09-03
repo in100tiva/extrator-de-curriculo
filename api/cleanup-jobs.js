@@ -1,3 +1,5 @@
+// api/cleanup-cron.js
+// This endpoint can be called periodically to clean up old jobs
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -6,79 +8,117 @@ if (!getApps().length) {
         const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
         initializeApp({ credential: cert(serviceAccount) });
     } catch (e) {
-        console.error("ERRO CRÍTICO: Falha na inicialização do Firebase Admin.", e);
+        console.error("Firebase Admin initialization error:", e);
         throw e;
     }
 }
 const db = getFirestore();
 
 export default async function handler(request, response) {
-    if (request.method !== 'POST') return response.status(405).send('Method Not Allowed');
-    
-    const { userId, olderThanHours = 1 } = request.body;
-    if (!userId) return response.status(400).send('User ID is required.');
+    // Optional: Add security token check
+    const authToken = request.headers['x-cleanup-token'];
+    if (authToken !== process.env.CLEANUP_TOKEN && process.env.CLEANUP_TOKEN) {
+        return response.status(401).json({ error: 'Unauthorized' });
+    }
 
     try {
-        console.log(`[CLEANUP-API] Iniciando limpeza para ${userId}, mais de ${olderThanHours} horas`);
+        console.log('[CLEANUP-CRON] Starting cleanup job...');
         
-        const cutoffTime = Timestamp.fromMillis(Date.now() - olderThanHours * 60 * 60 * 1000);
+        // Clean up jobs older than 24 hours
+        const cutoffTime = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
         
-        // Busca jobs finalizados antigos
+        // Query completed and failed jobs older than cutoff
         const oldJobsSnapshot = await db.collection('processing_queue')
-            .where('userId', '==', userId)
             .where('finishedAt', '<=', cutoffTime)
+            .limit(500) // Process in batches to avoid timeout
             .get();
-
+        
         if (oldJobsSnapshot.empty) {
-            console.log(`[CLEANUP-API] Nenhum job antigo encontrado`);
+            console.log('[CLEANUP-CRON] No old jobs to clean');
             return response.status(200).json({ 
                 success: true, 
-                deleted: 0, 
-                message: 'No old jobs found to clean' 
+                cleaned: 0,
+                message: 'No old jobs found' 
             });
         }
-
-        console.log(`[CLEANUP-API] Encontrados ${oldJobsSnapshot.size} jobs para limpeza`);
-
-        // Remove jobs em lotes
-        const batch = db.batch();
-        let deletedCount = 0;
-        const deletedJobs = [];
-
+        
+        // Delete in batches of 100 (Firestore limit)
+        const batches = [];
+        let batch = db.batch();
+        let operationCount = 0;
+        let totalDeleted = 0;
+        
         oldJobsSnapshot.docs.forEach(doc => {
-            const jobData = doc.data();
-            
-            // Só remove completed e failed
-            if (jobData.status === 'completed' || jobData.status === 'failed') {
+            const data = doc.data();
+            // Only delete completed or failed jobs
+            if (data.status === 'completed' || data.status === 'failed') {
                 batch.delete(doc.ref);
-                deletedCount++;
-                deletedJobs.push({
-                    id: doc.id,
-                    fileName: jobData.fileName,
-                    status: jobData.status,
-                    finishedAt: jobData.finishedAt?.toDate()
-                });
+                operationCount++;
+                totalDeleted++;
+                
+                // Create new batch every 100 operations
+                if (operationCount === 100) {
+                    batches.push(batch);
+                    batch = db.batch();
+                    operationCount = 0;
+                }
             }
         });
-
-        if (deletedCount > 0) {
-            await batch.commit();
-            console.log(`[CLEANUP-API] ✅ ${deletedCount} jobs removidos com sucesso`);
+        
+        // Add remaining batch
+        if (operationCount > 0) {
+            batches.push(batch);
         }
-
+        
+        // Execute all batches
+        await Promise.all(batches.map(b => b.commit()));
+        
+        console.log(`[CLEANUP-CRON] Cleaned ${totalDeleted} old jobs`);
+        
+        // Also clean up stuck processing jobs (older than 10 minutes)
+        const stuckCutoff = Timestamp.fromMillis(Date.now() - 10 * 60 * 1000);
+        const stuckJobsSnapshot = await db.collection('processing_queue')
+            .where('status', '==', 'processing')
+            .where('startedAt', '<=', stuckCutoff)
+            .limit(100)
+            .get();
+        
+        if (!stuckJobsSnapshot.empty) {
+            const stuckBatch = db.batch();
+            let stuckCount = 0;
+            
+            stuckJobsSnapshot.docs.forEach(doc => {
+                stuckBatch.update(doc.ref, {
+                    status: 'failed',
+                    finishedAt: Timestamp.now(),
+                    error: 'Job timeout - stuck in processing'
+                });
+                stuckCount++;
+            });
+            
+            await stuckBatch.commit();
+            console.log(`[CLEANUP-CRON] Reset ${stuckCount} stuck jobs`);
+            
+            return response.status(200).json({
+                success: true,
+                cleaned: totalDeleted,
+                resetStuck: stuckCount,
+                message: `Cleaned ${totalDeleted} old jobs and reset ${stuckCount} stuck jobs`
+            });
+        }
+        
         return response.status(200).json({
             success: true,
-            deleted: deletedCount,
-            jobs: deletedJobs,
-            message: `Successfully cleaned ${deletedCount} old jobs`
+            cleaned: totalDeleted,
+            message: `Successfully cleaned ${totalDeleted} old jobs`
         });
-
+        
     } catch (error) {
-        console.error(`[CLEANUP-API] Erro na limpeza:`, error);
+        console.error('[CLEANUP-CRON] Error:', error);
         return response.status(500).json({
             success: false,
-            error: 'Failed to cleanup jobs',
-            details: error.message
+            error: 'Cleanup failed',
+            message: error.message
         });
     }
 }

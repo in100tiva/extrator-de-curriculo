@@ -3,132 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extrator de Currículos em Lote</title>
+    <title>Extrator de Dados de Currículos - Sistema Otimizado</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs" type="module"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .progress-bar { transition: width 0.3s ease-in-out; }
-        .batch-status { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .processing-indicator {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .progress-segment {
+            transition: width 0.5s ease-out, background-color 0.3s ease;
+        }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
 
-    <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-8">
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Header -->
         <header class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">Extrator de Currículos em Lote</h1>
-            <p class="text-gray-600 mt-2">Processe até 200 currículos PDFs de uma vez - Otimizado para Vercel</p>
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">Extrator de Currículos em Lote</h1>
+            <p class="text-gray-600">Sistema otimizado para processar 100-200 currículos de uma vez</p>
+            <div class="mt-4 inline-flex items-center gap-2 text-sm bg-green-100 text-green-800 px-4 py-2 rounded-full">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Sistema Online
+            </div>
         </header>
 
-        <!-- Upload Section -->
-        <div class="text-center mb-6">
-            <label for="pdfFiles" class="cursor-pointer inline-flex items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                </svg>
-                Selecionar Currículos PDF
-            </label>
-            <input type="file" id="pdfFiles" accept=".pdf" class="hidden" multiple>
-            <p id="fileCount" class="text-sm text-gray-600 mt-2"></p>
-        </div>
-
-        <!-- Data Selection -->
-        <div class="mb-6">
-            <h3 class="text-lg font-medium text-gray-700 text-center mb-3">Dados para extrair:</h3>
-            <div class="flex justify-center space-x-6">
-                <label class="flex items-center cursor-pointer">
-                    <input type="checkbox" id="select-idade" class="form-checkbox h-4 w-4 text-blue-600" checked>
-                    <span class="ml-2">Idade</span>
-                </label>
-                <label class="flex items-center cursor-pointer">
-                    <input type="checkbox" id="select-email" class="form-checkbox h-4 w-4 text-blue-600" checked>
-                    <span class="ml-2">E-mail</span>
-                </label>
-                <label class="flex items-center cursor-pointer">
-                    <input type="checkbox" id="select-contatos" class="form-checkbox h-4 w-4 text-blue-600" checked>
-                    <span class="ml-2">Contatos</span>
-                </label>
-            </div>
-        </div>
-
-        <!-- Action Button -->
-        <div class="text-center mb-8">
-            <button id="processButton" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition transform hover:scale-105" disabled>
-                🚀 Processar em Lote
-            </button>
-        </div>
-
-        <!-- Batch Status -->
-        <div id="batchStatus" class="hidden mb-8">
-            <div class="batch-status text-white p-6 rounded-xl">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-semibold">Processamento em Lote</h3>
-                    <div id="statusBadge" class="px-3 py-1 bg-white bg-opacity-20 rounded-full text-sm font-medium">
-                        Iniciando...
-                    </div>
-                </div>
-                
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 text-center">
-                    <div>
-                        <div id="totalJobs" class="text-2xl font-bold">0</div>
-                        <div class="text-sm opacity-90">Total</div>
-                    </div>
-                    <div>
-                        <div id="pendingJobs" class="text-2xl font-bold text-yellow-200">0</div>
-                        <div class="text-sm opacity-90">Pendentes</div>
-                    </div>
-                    <div>
-                        <div id="processingJobs" class="text-2xl font-bold text-blue-200">0</div>
-                        <div class="text-sm opacity-90">Processando</div>
-                    </div>
-                    <div>
-                        <div id="completedJobs" class="text-2xl font-bold text-green-200">0</div>
-                        <div class="text-sm opacity-90">Concluídos</div>
-                    </div>
-                    <div>
-                        <div id="failedJobs" class="text-2xl font-bold text-red-200">0</div>
-                        <div class="text-sm opacity-90">Falharam</div>
-                    </div>
-                </div>
-
-                <div class="w-full bg-white bg-opacity-20 rounded-full h-3 mb-2">
-                    <div id="progressBar" class="progress-bar bg-white h-3 rounded-full" style="width: 0%"></div>
-                </div>
-                <div id="progressText" class="text-center text-sm opacity-90">0% concluído</div>
-                
-                <div id="etaContainer" class="hidden mt-3 text-center text-sm opacity-75">
-                    Tempo estimado: <span id="etaText">calculando...</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Results Section -->
-        <div id="results" class="hidden">
-            <div class="flex justify-between items-center border-b pb-2 mb-6">
-                <h2 class="text-2xl font-semibold text-gray-800">Resultados Extraídos</h2>
-                <button id="downloadButton" class="bg-green-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-700 flex items-center">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m-1 5.5V21a3.5 3.5 0 01-7 0v-.5m14 0v.5a3.5 3.5 0 01-7 0v-.5"></path>
+        <!-- Main Container -->
+        <div class="bg-white rounded-2xl shadow-xl p-8">
+            
+            <!-- Upload Section -->
+            <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 hover:border-indigo-400 transition-colors">
+                <div class="text-center">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
-                    Baixar Excel
+                    <label for="pdfFiles" class="mt-4 inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 cursor-pointer transition-colors">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        Selecionar Currículos (PDFs)
+                    </label>
+                    <input type="file" id="pdfFiles" accept=".pdf" multiple class="hidden">
+                    <p class="text-sm text-gray-500 mt-2">Arraste arquivos ou clique para selecionar</p>
+                    <p class="text-xs text-gray-400 mt-1">Suporta até 200 PDFs por vez</p>
+                </div>
+                
+                <!-- File Count Display -->
+                <div id="fileInfo" class="hidden mt-6 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">Arquivos selecionados:</span>
+                        <span id="fileCount" class="text-2xl font-bold text-indigo-600">0</span>
+                    </div>
+                    <div id="fileList" class="mt-2 max-h-32 overflow-y-auto text-xs text-gray-600"></div>
+                </div>
+            </div>
+
+            <!-- Options Section -->
+            <div class="mt-6 p-6 bg-gray-50 rounded-xl">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Campos para Extração</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="extract-nome" class="h-4 w-4 text-indigo-600 rounded" checked disabled>
+                        <span class="text-sm text-gray-700">Nome</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="extract-idade" class="h-4 w-4 text-indigo-600 rounded" checked>
+                        <span class="text-sm text-gray-700">Idade</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="extract-email" class="h-4 w-4 text-indigo-600 rounded" checked>
+                        <span class="text-sm text-gray-700">Email</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="extract-contatos" class="h-4 w-4 text-indigo-600 rounded" checked>
+                        <span class="text-sm text-gray-700">Contatos</span>
+                    </label>
+                </div>
+                
+                <!-- Processing Options -->
+                <div class="mt-4 pt-4 border-t border-gray-200">
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Configurações de Processamento</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs text-gray-600">Tamanho do Lote</label>
+                            <select id="batchSize" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                <option value="5">5 arquivos por vez (mais estável)</option>
+                                <option value="10" selected>10 arquivos por vez (recomendado)</option>
+                                <option value="20">20 arquivos por vez (mais rápido)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600">Intervalo entre Lotes</label>
+                            <select id="batchDelay" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                <option value="2000">2 segundos</option>
+                                <option value="5000" selected>5 segundos (recomendado)</option>
+                                <option value="10000">10 segundos (mais seguro)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Process Button -->
+            <div class="mt-6 flex justify-center">
+                <button id="processButton" disabled class="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                    <span id="buttonText">Selecione arquivos para começar</span>
                 </button>
             </div>
-            <div id="resultsTable" class="overflow-x-auto"></div>
-        </div>
 
-        <!-- Error Messages -->
-        <div id="errorContainer" class="hidden mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
-                    </svg>
+            <!-- Progress Section -->
+            <div id="progressSection" class="hidden mt-8">
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">Progresso do Processamento</h3>
+                        <span id="progressPercent" class="text-2xl font-bold text-indigo-600">0%</span>
+                    </div>
+                    
+                    <!-- Multi-stage Progress Bar -->
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-600 mb-1">
+                                <span>Enviando para fila</span>
+                                <span id="queueProgress">0/0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="queueBar" class="progress-segment bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-600 mb-1">
+                                <span>Processando com IA</span>
+                                <span id="processProgress">0/0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="processBar" class="progress-segment bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Status Messages -->
+                    <div id="statusMessages" class="mt-4 space-y-1 max-h-32 overflow-y-auto">
+                        <!-- Status messages will appear here -->
+                    </div>
+                    
+                    <!-- Stats -->
+                    <div class="mt-4 grid grid-cols-3 gap-4 text-center">
+                        <div class="bg-white rounded-lg p-3">
+                            <div class="text-2xl font-bold text-green-600" id="successCount">0</div>
+                            <div class="text-xs text-gray-600">Sucesso</div>
+                        </div>
+                        <div class="bg-white rounded-lg p-3">
+                            <div class="text-2xl font-bold text-yellow-600" id="processingCount">0</div>
+                            <div class="text-xs text-gray-600">Processando</div>
+                        </div>
+                        <div class="bg-white rounded-lg p-3">
+                            <div class="text-2xl font-bold text-red-600" id="failCount">0</div>
+                            <div class="text-xs text-gray-600">Falhas</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="ml-3">
-                    <h3 class="text-sm font-medium">Erro no processamento</h3>
-                    <div id="errorMessage" class="mt-2 text-sm"></div>
+            </div>
+
+            <!-- Results Table -->
+            <div id="resultsSection" class="hidden mt-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-semibold text-gray-800">Dados Extraídos</h3>
+                    <button id="downloadExcel" class="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Exportar Excel
+                    </button>
+                </div>
+                
+                <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table id="resultsTable" class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr id="tableHeader"></tr>
+                        </thead>
+                        <tbody id="tableBody" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                <div id="pagination" class="mt-4 flex items-center justify-between">
+                    <span id="pageInfo" class="text-sm text-gray-700"></span>
+                    <div class="flex gap-2">
+                        <button id="prevPage" class="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50">Anterior</button>
+                        <button id="nextPage" class="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50">Próxima</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -136,351 +207,413 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, where, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         
         const { pdfjsLib } = globalThis;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs';
 
-        // Firebase config
+        // Firebase Configuration
         const firebaseConfig = {
-          apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
-          authDomain: "pdf-extrator.firebaseapp.com",
-          projectId: "pdf-extrator",
-          storageBucket: "pdf-extrator.appspot.com",
-          messagingSenderId: "1083062925751",
-          appId: "1:1083062925751:web:384523e9beb7362bbd5032",
-          measurementId: "G-29B954MXCN"
+            apiKey: "AIzaSyD_awev3z5vRqoIEC52GHJfxl32pzfteE0",
+            authDomain: "pdf-extrator.firebaseapp.com",
+            projectId: "pdf-extrator",
+            storageBucket: "pdf-extrator.appspot.com",
+            messagingSenderId: "1083062925751",
+            appId: "1:1083062925751:web:384523e9beb7362bbd5032"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // UI Elements
-        const ui = {
-            fileInput: document.getElementById('pdfFiles'),
-            fileCount: document.getElementById('fileCount'),
-            processButton: document.getElementById('processButton'),
-            batchStatus: document.getElementById('batchStatus'),
-            statusBadge: document.getElementById('statusBadge'),
-            totalJobs: document.getElementById('totalJobs'),
-            pendingJobs: document.getElementById('pendingJobs'),
-            processingJobs: document.getElementById('processingJobs'),
-            completedJobs: document.getElementById('completedJobs'),
-            failedJobs: document.getElementById('failedJobs'),
-            progressBar: document.getElementById('progressBar'),
-            progressText: document.getElementById('progressText'),
-            etaContainer: document.getElementById('etaContainer'),
-            etaText: document.getElementById('etaText'),
-            results: document.getElementById('results'),
-            resultsTable: document.getElementById('resultsTable'),
-            downloadButton: document.getElementById('downloadButton'),
-            errorContainer: document.getElementById('errorContainer'),
-            errorMessage: document.getElementById('errorMessage'),
-            selectors: {
-                idade: document.getElementById('select-idade'),
-                email: document.getElementById('select-email'),
-                contatos: document.getElementById('select-contatos')
+        // State Management
+        const state = {
+            files: [],
+            jobs: new Map(),
+            results: [],
+            currentPage: 1,
+            itemsPerPage: 10,
+            processing: false,
+            userId: localStorage.getItem('userId') || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            unsubscribe: null,
+            stats: {
+                total: 0,
+                queued: 0,
+                processing: 0,
+                completed: 0,
+                failed: 0
             }
         };
 
-        // State
-        let userId = localStorage.getItem('userId') || `user_${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('userId', userId);
-        let selectedFiles = [];
-        let extractedData = [];
-        let statusChecker = null;
-        let startTime = null;
+        localStorage.setItem('userId', state.userId);
 
-        // Event Listeners
-        ui.fileInput.addEventListener('change', handleFileSelection);
-        ui.processButton.addEventListener('click', startBatchProcessing);
-        ui.downloadButton.addEventListener('click', downloadExcel);
+        // DOM Elements
+        const dom = {
+            fileInput: document.getElementById('pdfFiles'),
+            fileInfo: document.getElementById('fileInfo'),
+            fileCount: document.getElementById('fileCount'),
+            fileList: document.getElementById('fileList'),
+            processButton: document.getElementById('processButton'),
+            buttonText: document.getElementById('buttonText'),
+            progressSection: document.getElementById('progressSection'),
+            resultsSection: document.getElementById('resultsSection'),
+            queueProgress: document.getElementById('queueProgress'),
+            processProgress: document.getElementById('processProgress'),
+            queueBar: document.getElementById('queueBar'),
+            processBar: document.getElementById('processBar'),
+            progressPercent: document.getElementById('progressPercent'),
+            statusMessages: document.getElementById('statusMessages'),
+            successCount: document.getElementById('successCount'),
+            processingCount: document.getElementById('processingCount'),
+            failCount: document.getElementById('failCount'),
+            tableHeader: document.getElementById('tableHeader'),
+            tableBody: document.getElementById('tableBody'),
+            pageInfo: document.getElementById('pageInfo'),
+            prevPage: document.getElementById('prevPage'),
+            nextPage: document.getElementById('nextPage'),
+            downloadExcel: document.getElementById('downloadExcel'),
+            batchSize: document.getElementById('batchSize'),
+            batchDelay: document.getElementById('batchDelay'),
+            extractors: {
+                nome: document.getElementById('extract-nome'),
+                idade: document.getElementById('extract-idade'),
+                email: document.getElementById('extract-email'),
+                contatos: document.getElementById('extract-contatos')
+            }
+        };
 
-        function handleFileSelection(e) {
-            selectedFiles = Array.from(e.target.files);
-            
-            if (selectedFiles.length > 0) {
-                ui.fileCount.textContent = `${selectedFiles.length} arquivo(s) selecionado(s)`;
-                ui.processButton.disabled = false;
-                
-                if (selectedFiles.length > 200) {
-                    showError('Máximo de 200 arquivos por vez. Processamento pode ser lento.');
-                    ui.fileCount.textContent += ' (Limite: 200 arquivos)';
+        // File Input Handler
+        dom.fileInput.addEventListener('change', (e) => {
+            state.files = Array.from(e.target.files);
+            updateFileDisplay();
+        });
+
+        function updateFileDisplay() {
+            if (state.files.length > 0) {
+                dom.fileInfo.classList.remove('hidden');
+                dom.fileCount.textContent = state.files.length;
+                dom.fileList.innerHTML = state.files.slice(0, 5).map(f => `<div>• ${f.name}</div>`).join('');
+                if (state.files.length > 5) {
+                    dom.fileList.innerHTML += `<div class="font-medium">... e mais ${state.files.length - 5} arquivo(s)</div>`;
                 }
+                dom.processButton.disabled = false;
+                dom.buttonText.textContent = `Processar ${state.files.length} arquivo(s)`;
             } else {
-                ui.fileCount.textContent = '';
-                ui.processButton.disabled = true;
-            }
-            hideError();
-        }
-
-        async function startBatchProcessing() {
-            if (selectedFiles.length === 0) return;
-
-            ui.processButton.disabled = true;
-            ui.batchStatus.classList.remove('hidden');
-            ui.results.classList.add('hidden');
-            extractedData = [];
-            startTime = Date.now();
-
-            try {
-                showStatus('Enviando arquivos para a fila...', 'bg-blue-500');
-                
-                // Get selected fields
-                const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-                
-                // Upload files to queue
-                await uploadFilesToQueue(selectedFiles, selectedFields);
-                
-                showStatus('Processando em lote...', 'bg-green-500');
-                
-                // Start processing
-                await fetch('/api/start-processing', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId })
-                });
-
-                // Start monitoring
-                startStatusMonitoring();
-
-            } catch (error) {
-                showError(`Erro ao iniciar processamento: ${error.message}`);
-                ui.processButton.disabled = false;
+                dom.fileInfo.classList.add('hidden');
+                dom.processButton.disabled = true;
+                dom.buttonText.textContent = 'Selecione arquivos para começar';
             }
         }
 
-        async function uploadFilesToQueue(files, selectedFields) {
-            const batchSize = 10; // Process 10 files at a time
+        // Process Button Handler
+        dom.processButton.addEventListener('click', startProcessing);
+
+        async function startProcessing() {
+            if (state.processing || state.files.length === 0) return;
             
-            for (let i = 0; i < files.length; i += batchSize) {
-                const batch = files.slice(i, i + batchSize);
-                const promises = batch.map(file => uploadSingleFile(file, selectedFields));
-                
-                await Promise.all(promises);
-                
-                // Update progress
-                const uploaded = Math.min(i + batchSize, files.length);
-                const progress = (uploaded / files.length) * 20; // 20% for upload
-                updateProgress(progress, `Enviando arquivo ${uploaded}/${files.length}...`);
+            state.processing = true;
+            state.jobs.clear();
+            state.results = [];
+            state.stats = { total: state.files.length, queued: 0, processing: 0, completed: 0, failed: 0 };
+            
+            // UI Updates
+            dom.processButton.disabled = true;
+            dom.buttonText.textContent = 'Processando...';
+            dom.progressSection.classList.remove('hidden');
+            dom.resultsSection.classList.add('hidden');
+            dom.statusMessages.innerHTML = '';
+            
+            // Get selected fields
+            const selectedFields = Object.keys(dom.extractors)
+                .filter(key => dom.extractors[key].checked);
+            
+            // Process in batches
+            const batchSize = parseInt(dom.batchSize.value);
+            const batchDelay = parseInt(dom.batchDelay.value);
+            
+            addStatusMessage('🚀 Iniciando processamento em lotes...', 'info');
+            
+            // Create all jobs first
+            const jobPromises = [];
+            for (const file of state.files) {
+                jobPromises.push(createJob(file, selectedFields));
             }
+            
+            // Wait for all jobs to be created
+            const jobIds = await Promise.all(jobPromises);
+            
+            // Setup real-time listener
+            setupRealtimeListener(jobIds.filter(id => id !== null));
+            
+            // Process in batches
+            await processBatches(jobIds.filter(id => id !== null), batchSize, batchDelay);
         }
 
-        async function uploadSingleFile(file, selectedFields) {
+        async function createJob(file, selectedFields) {
             try {
                 const text = await extractTextFromPdf(file);
-                
-                await addDoc(collection(db, "processing_queue"), {
-                    userId: userId,
+                const docRef = await addDoc(collection(db, "processing_queue"), {
+                    userId: state.userId,
                     fileName: file.name,
-                    text: text,
+                    text: text.substring(0, 3000), // Limit text size
                     selectedFields: selectedFields,
                     status: 'pending',
                     createdAt: serverTimestamp()
                 });
                 
+                state.jobs.set(docRef.id, {
+                    fileName: file.name,
+                    status: 'pending'
+                });
+                
+                state.stats.queued++;
+                updateProgress();
+                addStatusMessage(`📋 ${file.name} adicionado à fila`, 'success');
+                
+                return docRef.id;
             } catch (error) {
-                console.error(`Erro ao enviar ${file.name}:`, error);
-                // Continue with other files
+                console.error('Error creating job:', error);
+                addStatusMessage(`❌ Erro ao adicionar ${file.name}`, 'error');
+                state.stats.failed++;
+                updateProgress();
+                return null;
             }
         }
 
         async function extractTextFromPdf(file) {
             return new Promise((resolve, reject) => {
-                const fileReader = new FileReader();
-                
-                fileReader.onload = async (e) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
                     try {
                         const typedarray = new Uint8Array(e.target.result);
                         const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
-                        
                         let fullText = '';
-                        const maxPages = Math.min(pdf.numPages, 3); // Only first 3 pages for speed
                         
+                        // Extract up to 3 pages
+                        const maxPages = Math.min(pdf.numPages, 3);
                         for (let i = 1; i <= maxPages; i++) {
                             const page = await pdf.getPage(i);
                             const textContent = await page.getTextContent();
-                            fullText += textContent.items.map(item => item.str).join(' ') + ' ';
+                            fullText += textContent.items.map(item => item.str).join(' ') + '\n';
                         }
                         
-                        resolve(fullText.trim());
+                        resolve(fullText);
                     } catch (err) {
                         reject(err);
                     }
                 };
-                
-                fileReader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
-                fileReader.readAsArrayBuffer(file);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
             });
         }
 
-        function startStatusMonitoring() {
-            // Check status every 2 seconds
-            statusChecker = setInterval(async () => {
-                try {
-                    const response = await fetch(`/api/queue-status?userId=${userId}`);
-                    const status = await response.json();
-                    
-                    updateStatusDisplay(status);
-                    
-                    if (status.isComplete) {
-                        clearInterval(statusChecker);
-                        await loadResults();
-                        showStatus('Processamento concluído!', 'bg-green-600');
-                        ui.processButton.disabled = false;
-                    }
-                    
-                } catch (error) {
-                    console.error('Erro ao verificar status:', error);
-                }
-            }, 2000);
-
-            // Also listen for real-time updates
-            const q = query(collection(db, "processing_queue"), where('userId', '==', userId));
-            onSnapshot(q, (snapshot) => {
+        function setupRealtimeListener(jobIds) {
+            if (state.unsubscribe) {
+                state.unsubscribe();
+            }
+            
+            const q = query(
+                collection(db, "processing_queue"),
+                where('userId', '==', state.userId)
+            );
+            
+            state.unsubscribe = onSnapshot(q, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
-                    if (change.type === 'modified') {
-                        const job = change.doc.data();
-                        if (job.status === 'completed' && job.result) {
-                            const existing = extractedData.findIndex(d => d.jobId === change.doc.id);
-                            if (existing === -1) {
-                                extractedData.push({
-                                    ...job.result,
-                                    jobId: change.doc.id,
-                                    fileName: job.fileName
+                    const data = change.doc.data();
+                    const jobId = change.doc.id;
+                    
+                    if (!jobIds.includes(jobId)) return;
+                    
+                    const prevStatus = state.jobs.get(jobId)?.status;
+                    state.jobs.set(jobId, {
+                        fileName: data.fileName,
+                        status: data.status,
+                        result: data.result,
+                        error: data.error
+                    });
+                    
+                    // Update stats
+                    if (prevStatus !== data.status) {
+                        if (prevStatus === 'processing') state.stats.processing--;
+                        if (prevStatus === 'pending') state.stats.queued--;
+                        
+                        if (data.status === 'processing') {
+                            state.stats.processing++;
+                            addStatusMessage(`⚙️ Processando ${data.fileName}...`, 'info');
+                        } else if (data.status === 'completed') {
+                            state.stats.completed++;
+                            if (data.result) {
+                                state.results.push({
+                                    ...data.result,
+                                    fileName: data.fileName
                                 });
+                                renderResults();
                             }
+                            addStatusMessage(`✅ ${data.fileName} concluído`, 'success');
+                        } else if (data.status === 'failed') {
+                            state.stats.failed++;
+                            addStatusMessage(`❌ ${data.fileName} falhou: ${data.error || 'Erro desconhecido'}`, 'error');
                         }
                     }
+                    
+                    updateProgress();
+                    checkCompletion();
                 });
             });
         }
 
-        function updateStatusDisplay(status) {
-            ui.totalJobs.textContent = status.total || 0;
-            ui.pendingJobs.textContent = status.pending || 0;
-            ui.processingJobs.textContent = status.processing || 0;
-            ui.completedJobs.textContent = status.completed || 0;
-            ui.failedJobs.textContent = status.failed || 0;
-
-            const progress = status.progress || 0;
-            updateProgress(progress, `${progress}% concluído`);
-
-            // Calculate ETA
-            if (startTime && progress > 0 && progress < 100) {
-                const elapsed = Date.now() - startTime;
-                const estimated = (elapsed / progress) * (100 - progress);
-                const eta = Math.round(estimated / 1000 / 60); // minutes
+        async function processBatches(jobIds, batchSize, batchDelay) {
+            for (let i = 0; i < jobIds.length; i += batchSize) {
+                const batch = jobIds.slice(i, i + batchSize);
                 
-                ui.etaContainer.classList.remove('hidden');
-                ui.etaText.textContent = eta > 60 ? `${Math.round(eta/60)}h ${eta%60}m` : `${eta}m`;
+                addStatusMessage(`📦 Processando lote ${Math.floor(i/batchSize) + 1} de ${Math.ceil(jobIds.length/batchSize)}`, 'info');
+                
+                // Trigger batch processing
+                try {
+                    await fetch('/api/process-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: state.userId,
+                            jobIds: batch
+                        })
+                    });
+                } catch (error) {
+                    console.error('Error triggering batch:', error);
+                }
+                
+                // Wait before next batch
+                if (i + batchSize < jobIds.length) {
+                    await new Promise(resolve => setTimeout(resolve, batchDelay));
+                }
             }
         }
 
-        function updateProgress(progress, text) {
-            ui.progressBar.style.width = `${Math.max(progress, 5)}%`;
-            ui.progressText.textContent = text;
+        function updateProgress() {
+            const total = state.stats.total;
+            const completed = state.stats.completed + state.stats.failed;
+            
+            // Update queue progress
+            dom.queueProgress.textContent = `${state.stats.queued}/${total}`;
+            dom.queueBar.style.width = `${(state.stats.queued / total) * 100}%`;
+            
+            // Update process progress
+            dom.processProgress.textContent = `${completed}/${total}`;
+            dom.processBar.style.width = `${(completed / total) * 100}%`;
+            
+            // Update overall percentage
+            const percent = Math.round((completed / total) * 100);
+            dom.progressPercent.textContent = `${percent}%`;
+            
+            // Update stats cards
+            dom.successCount.textContent = state.stats.completed;
+            dom.processingCount.textContent = state.stats.processing;
+            dom.failCount.textContent = state.stats.failed;
         }
 
-        async function loadResults() {
-            if (extractedData.length === 0) return;
+        function addStatusMessage(message, type) {
+            const messageEl = document.createElement('div');
+            messageEl.className = `text-xs ${type === 'error' ? 'text-red-600' : type === 'success' ? 'text-green-600' : 'text-gray-600'}`;
+            messageEl.textContent = `${new Date().toLocaleTimeString('pt-BR')} - ${message}`;
+            dom.statusMessages.insertBefore(messageEl, dom.statusMessages.firstChild);
+            
+            // Keep only last 10 messages
+            while (dom.statusMessages.children.length > 10) {
+                dom.statusMessages.removeChild(dom.statusMessages.lastChild);
+            }
+        }
 
-            const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+        function checkCompletion() {
+            const total = state.stats.total;
+            const completed = state.stats.completed + state.stats.failed;
             
-            // Create table
-            let tableHtml = `
-                <table class="min-w-full bg-white border border-gray-200 rounded-lg">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome</th>
-            `;
-            
-            if (selectedFields.includes('idade')) {
-                tableHtml += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idade</th>`;
+            if (completed === total) {
+                state.processing = false;
+                dom.processButton.disabled = false;
+                dom.buttonText.textContent = 'Processar Novos Arquivos';
+                addStatusMessage(`🎉 Processamento concluído! ${state.stats.completed} sucesso, ${state.stats.failed} falhas`, 'success');
+                
+                if (state.unsubscribe) {
+                    state.unsubscribe();
+                    state.unsubscribe = null;
+                }
             }
-            if (selectedFields.includes('email')) {
-                tableHtml += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">E-mail</th>`;
-            }
-            if (selectedFields.includes('contatos')) {
-                tableHtml += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contatos</th>`;
-            }
-            
-            tableHtml += `
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Arquivo</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-            `;
+        }
 
-            // Add rows
-            extractedData.forEach(data => {
-                tableHtml += `<tr class="hover:bg-gray-50">`;
-                tableHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${data.nome || 'N/A'}</td>`;
-                
-                if (selectedFields.includes('idade')) {
-                    tableHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${data.idade > 0 ? data.idade + ' anos' : 'N/A'}</td>`;
-                }
-                if (selectedFields.includes('email')) {
-                    tableHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${data.email || 'N/A'}</td>`;
-                }
-                if (selectedFields.includes('contatos')) {
-                    const contatos = Array.isArray(data.contatos) ? data.contatos.join(', ') : (data.contatos || 'N/A');
-                    tableHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${contatos}</td>`;
-                }
-                
-                tableHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${data.fileName}</td>`;
-                tableHtml += `</tr>`;
+        function renderResults() {
+            if (state.results.length === 0) return;
+            
+            dom.resultsSection.classList.remove('hidden');
+            
+            // Build table header
+            const selectedFields = Object.keys(dom.extractors).filter(key => dom.extractors[key].checked);
+            let headerHTML = '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome</th>';
+            if (selectedFields.includes('idade')) headerHTML += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idade</th>';
+            if (selectedFields.includes('email')) headerHTML += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>';
+            if (selectedFields.includes('contatos')) headerHTML += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contatos</th>';
+            headerHTML += '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Arquivo</th>';
+            dom.tableHeader.innerHTML = headerHTML;
+            
+            // Paginate results
+            const start = (state.currentPage - 1) * state.itemsPerPage;
+            const end = start + state.itemsPerPage;
+            const pageResults = state.results.slice(start, end);
+            
+            // Build table body
+            let bodyHTML = '';
+            pageResults.forEach(result => {
+                bodyHTML += '<tr class="hover:bg-gray-50">';
+                bodyHTML += `<td class="px-6 py-4 text-sm text-gray-900">${result.nome || 'N/A'}</td>`;
+                if (selectedFields.includes('idade')) bodyHTML += `<td class="px-6 py-4 text-sm text-gray-900">${result.idade || 'N/A'}</td>`;
+                if (selectedFields.includes('email')) bodyHTML += `<td class="px-6 py-4 text-sm text-gray-900">${result.email || 'N/A'}</td>`;
+                if (selectedFields.includes('contatos')) bodyHTML += `<td class="px-6 py-4 text-sm text-gray-900">${Array.isArray(result.contatos) ? result.contatos.join(', ') : 'N/A'}</td>`;
+                bodyHTML += `<td class="px-6 py-4 text-sm text-gray-900">${result.fileName}</td>`;
+                bodyHTML += '</tr>';
             });
-
-            tableHtml += `</tbody></table>`;
+            dom.tableBody.innerHTML = bodyHTML;
             
-            ui.resultsTable.innerHTML = tableHtml;
-            ui.results.classList.remove('hidden');
+            // Update pagination
+            const totalPages = Math.ceil(state.results.length / state.itemsPerPage);
+            dom.pageInfo.textContent = `Página ${state.currentPage} de ${totalPages} (${state.results.length} registros)`;
+            dom.prevPage.disabled = state.currentPage === 1;
+            dom.nextPage.disabled = state.currentPage === totalPages;
         }
 
-        function downloadExcel() {
-            if (extractedData.length === 0) return;
+        // Pagination handlers
+        dom.prevPage.addEventListener('click', () => {
+            if (state.currentPage > 1) {
+                state.currentPage--;
+                renderResults();
+            }
+        });
 
-            const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-            
-            const excelData = extractedData.map(item => {
+        dom.nextPage.addEventListener('click', () => {
+            const totalPages = Math.ceil(state.results.length / state.itemsPerPage);
+            if (state.currentPage < totalPages) {
+                state.currentPage++;
+                renderResults();
+            }
+        });
+
+        // Export to Excel
+        dom.downloadExcel.addEventListener('click', () => {
+            const selectedFields = Object.keys(dom.extractors).filter(key => dom.extractors[key].checked);
+            const dataToExport = state.results.map(item => {
                 const row = { Nome: item.nome || 'N/A' };
-                
-                if (selectedFields.includes('idade')) {
-                    row.Idade = item.idade > 0 ? item.idade + ' anos' : 'N/A';
-                }
-                if (selectedFields.includes('email')) {
-                    row['E-mail'] = item.email || 'N/A';
-                }
-                if (selectedFields.includes('contatos')) {
-                    row.Contatos = Array.isArray(item.contatos) ? item.contatos.join(', ') : (item.contatos || 'N/A');
-                }
-                
+                if (selectedFields.includes('idade')) row.Idade = item.idade || 'N/A';
+                if (selectedFields.includes('email')) row.Email = item.email || 'N/A';
+                if (selectedFields.includes('contatos')) row.Contatos = Array.isArray(item.contatos) ? item.contatos.join(', ') : 'N/A';
                 row.Arquivo = item.fileName;
                 return row;
             });
-
-            const ws = XLSX.utils.json_to_sheet(excelData);
+            
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Currículos Extraídos");
-            
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-            XLSX.writeFile(wb, `curriculos_lote_${timestamp}.xlsx`);
-        }
+            XLSX.writeFile(wb, `curriculos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        });
 
-        function showStatus(message, bgClass) {
-            ui.statusBadge.textContent = message;
-            ui.statusBadge.className = `px-3 py-1 ${bgClass} text-white rounded-full text-sm font-medium`;
-        }
-
-        function showError(message) {
-            ui.errorMessage.textContent = message;
-            ui.errorContainer.classList.remove('hidden');
-        }
-
-        function hideError() {
-            ui.errorContainer.classList.add('hidden');
-        }
+        // Initialize
+        console.log('Sistema inicializado. User ID:', state.userId);
     </script>
 </body>
 </html>

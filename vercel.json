@@ -1,16 +1,12 @@
 {
   "functions": {
     "api/process-batch.js": {
-      "maxDuration": 10
-    },
-    "api/start-processing.js": {
-      "maxDuration": 10
+      "maxDuration": 10,
+      "memory": 1024
     },
     "api/queue-status.js": {
-      "maxDuration": 5
-    },
-    "api/cleanup-jobs.js": {
-      "maxDuration": 10
+      "maxDuration": 10,
+      "memory": 512
     }
   },
   "rewrites": [
@@ -32,10 +28,15 @@
           "value": "*"
         },
         {
-          "key": "Access-Control-Allow-Methods", 
-          "value": "GET, POST, OPTIONS"
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
         }
       ]
     }
-  ]
+  ],
+  "crons": []
 }
