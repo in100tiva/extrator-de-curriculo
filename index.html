@@ -3,96 +3,294 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extrator de Dados de Currículos (PDF)</title>
+    <title>Extrator de Dados de Currículos (PDF) - Otimizado</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs" type="module"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        .file-input-button { cursor: pointer; padding: 0.75rem 1.5rem; background-color: #4f46e5; color: white; border-radius: 0.5rem; transition: background-color 0.3s; font-weight: 500; }
-        .file-input-button:hover { background-color: #4338ca; }
+        .file-input-button { 
+            cursor: pointer; 
+            padding: 0.75rem 1.5rem; 
+            background-color: #4f46e5; 
+            color: white; 
+            border-radius: 0.5rem; 
+            transition: all 0.3s; 
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .file-input-button:hover { 
+            background-color: #4338ca; 
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+        .file-input-button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
         table th, table td { text-align: left; padding: 12px 16px; }
-        .sortable-header { cursor: pointer; user-select: none; }
-        .sort-icon { display: inline-block; margin-left: 8px; opacity: 0.5; transition: opacity 0.2s, transform 0.2s; }
+        .sortable-header { 
+            cursor: pointer; 
+            user-select: none; 
+            transition: background-color 0.2s;
+        }
+        .sortable-header:hover {
+            background-color: rgba(79, 70, 229, 0.1);
+        }
+        .sort-icon { 
+            display: inline-block; 
+            margin-left: 8px; 
+            opacity: 0.5; 
+            transition: opacity 0.2s, transform 0.2s; 
+        }
         .sortable-header.sorted .sort-icon { opacity: 1; }
         .sortable-header.sorted.asc .sort-icon { transform: rotate(0deg); }
         .sortable-header.sorted.desc .sort-icon { transform: rotate(180deg); }
-        #progress-bar { transition: width 0.3s ease-in-out; }
-        .queue-status-card { background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem; text-align: center; }
+        #progress-bar { 
+            transition: width 0.5s ease-in-out;
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+        }
+        .queue-status-card { 
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            border: 1px solid #d1d5db; 
+            border-radius: 0.75rem; 
+            padding: 1.5rem; 
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .batch-preview {
+            animation: slideIn 0.3s ease-out;
+        }
+        .recovery-banner {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .validation-error {
+            background-color: #fef2f2;
+            border-color: #fecaca;
+            color: #dc2626;
+        }
+        .validation-success {
+            background-color: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #16a34a;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .stat-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            text-align: center;
+        }
+        .processing-indicator {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e5e7eb;
+            border-top: 2px solid #4f46e5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
 
-    <div class="w-full max-w-5xl mx-auto bg-white rounded-2xl shadow-lg p-8">
+    <div class="w-full max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-8">
         <header class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">Extrator de Dados de Currículos</h1>
-            <p class="text-gray-600 mt-2">Faça o upload de um ou mais currículos em PDF para extrair os dados em uma tabela.</p>
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                📄 Extrator de Dados de Currículos
+            </h1>
+            <p class="text-gray-600 text-lg">
+                Faça upload de até <strong>200 currículos</strong> em PDF para extrair dados em uma tabela
+            </p>
+            <div class="mt-4 text-sm text-gray-500">
+                ✨ <strong>Otimizado para lotes grandes</strong> • ⚡ Processamento inteligente • 🔄 Recuperação automática
+            </div>
         </header>
 
         <main>
+            <!-- Recovery Banner (hidden by default) -->
+            <div id="recovery-banner" class="hidden"></div>
+
             <!-- File Upload Section -->
-            <div class="text-center mb-6">
-                <label for="pdfFile" class="file-input-button">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
-                    Escolher Arquivo(s) PDF
-                </label>
-                <input type="file" id="pdfFile" accept=".pdf" class="hidden" multiple>
-                <p id="fileName" class="text-sm mt-4"></p>
+            <div class="text-center mb-8">
+                <div class="mb-4">
+                    <label for="pdfFile" class="file-input-button" id="upload-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                        </svg>
+                        Escolher Arquivo(s) PDF
+                    </label>
+                    <input type="file" id="pdfFile" accept=".pdf" class="hidden" multiple>
+                </div>
+                <div id="fileName" class="text-sm mt-4 min-h-[3rem] flex items-center justify-center"></div>
+                <div id="upload-help" class="text-xs text-gray-500 mt-2">
+                    📋 Suporte: PDF • Máximo: 200 arquivos, 5MB cada • Total: 100MB
+                </div>
             </div>
 
+            <!-- Batch Preview (dynamic) -->
+            <div id="batch-preview-container"></div>
+
             <!-- Data Selector Section -->
-            <div class="mb-6">
-                <h3 class="text-lg font-medium text-gray-700 text-center mb-3">Selecione os dados para extrair:</h3>
-                <div class="flex justify-center items-center space-x-6 text-gray-600">
-                    <label class="flex items-center cursor-pointer"><input type="checkbox" id="select-idade" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked><span class="ml-2">Idade</span></label>
-                    <label class="flex items-center cursor-pointer"><input type="checkbox" id="select-email" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked><span class="ml-2">E-mail</span></label>
-                    <label class="flex items-center cursor-pointer"><input type="checkbox" id="select-contatos" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked><span class="ml-2">Contatos</span></label>
+            <div class="mb-8">
+                <h3 class="text-xl font-semibold text-gray-700 text-center mb-4">
+                    🎯 Selecione os dados para extrair
+                </h3>
+                <div class="flex justify-center items-center space-x-8 text-gray-600">
+                    <label class="flex items-center cursor-pointer group">
+                        <input type="checkbox" id="select-idade" class="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
+                        <span class="ml-2 group-hover:text-indigo-600 transition-colors">👤 Idade</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer group">
+                        <input type="checkbox" id="select-email" class="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
+                        <span class="ml-2 group-hover:text-indigo-600 transition-colors">📧 E-mail</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer group">
+                        <input type="checkbox" id="select-contatos" class="h-5 w-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
+                        <span class="ml-2 group-hover:text-indigo-600 transition-colors">📱 Contatos</span>
+                    </label>
                 </div>
             </div>
 
             <!-- Action Button -->
             <div class="text-center mb-8">
-                <button id="extractButton" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100" disabled>
-                    Enviar para a Fila de Extração
+                <button id="extractButton" class="bg-indigo-600 text-white font-semibold py-4 px-10 rounded-xl shadow-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none" disabled>
+                    <span id="extract-button-text">🚀 Enviar para Extração</span>
+                    <div id="extract-button-spinner" class="hidden inline-block ml-2 processing-indicator"></div>
                 </button>
             </div>
 
             <!-- Queue Status Section -->
             <div id="queue-status-section" class="hidden mb-8">
                 <div class="queue-status-card">
-                    <h3 class="text-lg font-semibold text-gray-800">Status da Fila</h3>
-                    <p id="queue-position" class="text-gray-600 mt-2"></p>
-                    <div id="progress-container" class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                        <div id="progress-bar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    <div class="flex items-center justify-center mb-3">
+                        <div class="processing-indicator mr-3"></div>
+                        <h3 class="text-xl font-semibold text-gray-800">⚙️ Processando Lote</h3>
+                    </div>
+                    <p id="queue-position" class="text-gray-600 mt-2 text-lg"></p>
+                    <div id="progress-container" class="w-full bg-gray-200 rounded-full h-4 mt-4 shadow-inner">
+                        <div id="progress-bar" class="h-4 rounded-full shadow-sm" style="width: 0%"></div>
+                    </div>
+                    <div id="queue-stats" class="stats-grid hidden">
+                        <div class="stat-card">
+                            <div class="text-2xl font-bold text-green-600" id="completed-count">0</div>
+                            <div class="text-sm text-gray-500">Concluídos</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="text-2xl font-bold text-blue-600" id="processing-count">0</div>
+                            <div class="text-sm text-gray-500">Processando</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="text-2xl font-bold text-yellow-600" id="pending-count">0</div>
+                            <div class="text-sm text-gray-500">Na Fila</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="text-2xl font-bold text-red-600" id="failed-count">0</div>
+                            <div class="text-sm text-gray-500">Falhas</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-500">
+                        💡 <strong>Dica:</strong> Mantenha a aba aberta para acompanhar o progresso
                     </div>
                 </div>
             </div>
 
             <!-- Results Section -->
             <div id="results" class="hidden">
-                <div class="flex justify-between items-center border-b pb-2 mb-6">
-                    <h2 class="text-2xl font-semibold text-gray-800">Dados Extraídos</h2>
-                    <button id="downloadExcelButton" class="hidden bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
-                        Baixar como Excel
-                    </button>
+                <div class="flex justify-between items-center border-b pb-4 mb-6">
+                    <h2 class="text-3xl font-bold text-gray-800">📊 Dados Extraídos</h2>
+                    <div class="flex space-x-3">
+                        <button id="downloadExcelButton" class="hidden bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-green-700 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                            </svg>
+                            📥 Download Excel
+                        </button>
+                        <button id="refreshButton" class="hidden bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                            </svg>
+                            🔄 Atualizar
+                        </button>
+                    </div>
                 </div>
+                <div id="results-summary" class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg"></div>
                 <div id="output"></div>
                 <div id="pagination-controls" class="hidden mt-6 flex items-center justify-between">
-                    <span id="page-info" class="text-sm text-gray-700"></span>
-                    <div>
-                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg">Anterior</button>
-                        <button id="next-page" class="ml-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg">Próxima</button>
+                    <span id="page-info" class="text-sm text-gray-700 font-medium"></span>
+                    <div class="flex space-x-2">
+                        <button id="prev-page" class="bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 transition-all disabled:opacity-50">← Anterior</button>
+                        <button id="next-page" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-50">Próxima →</button>
                     </div>
                 </div>
             </div>
 
-            <div id="error-container" class="hidden mt-4 bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded-lg">
-                <strong class="font-bold">Erro:</strong>
-                <span id="error-message"></span>
+            <!-- Error Container -->
+            <div id="error-container" class="hidden mt-6 bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg shadow-sm">
+                <div class="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                    <strong class="font-bold">⚠️ Erro:</strong>
+                </div>
+                <div id="error-message" class="mt-2"></div>
+            </div>
+
+            <!-- Debug Panel (Development) -->
+            <div id="debug-panel" class="hidden mt-8 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 class="font-semibold text-gray-700 mb-2">🔧 Painel de Debug</h4>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <strong>User ID:</strong> <span id="debug-user-id"></span><br>
+                        <strong>Jobs Ativos:</strong> <span id="debug-active-jobs">0</span><br>
+                        <strong>Última Atualização:</strong> <span id="debug-last-update">-</span>
+                    </div>
+                    <div>
+                        <strong>Status da Sessão:</strong> <span id="debug-session-status">Inativa</span><br>
+                        <strong>Tempo de Processamento:</strong> <span id="debug-processing-time">-</span><br>
+                        <strong>Taxa de Sucesso:</strong> <span id="debug-success-rate">-</span>
+                    </div>
+                </div>
+                <div class="mt-3 space-x-2">
+                    <button id="debug-clear-session" class="text-xs bg-yellow-500 text-white px-2 py-1 rounded">Limpar Sessão</button>
+                    <button id="debug-show-status" class="text-xs bg-blue-500 text-white px-2 py-1 rounded">Status da Fila</button>
+                    <button id="debug-force-cleanup" class="text-xs bg-red-500 text-white px-2 py-1 rounded">Limpeza Forçada</button>
+                </div>
             </div>
         </main>
+
+        <!-- Footer -->
+        <footer class="mt-12 text-center text-gray-500 text-sm border-t pt-6">
+            <p>
+                🚀 Extrator de Currículos v2.0 • 
+                Processamento otimizado para lotes grandes • 
+                <a href="#" id="toggle-debug" class="text-indigo-600 hover:text-indigo-800">Debug</a>
+            </p>
+        </footer>
     </div>
 
     <script type="module">
@@ -115,15 +313,24 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
+        // === UI ELEMENTS ===
         const ui = {};
         Object.assign(ui, {
             pdfFileInput: document.getElementById('pdfFile'),
             fileNameDisplay: document.getElementById('fileName'),
             extractButton: document.getElementById('extractButton'),
+            extractButtonText: document.getElementById('extract-button-text'),
+            extractButtonSpinner: document.getElementById('extract-button-spinner'),
             queueStatusSection: document.getElementById('queue-status-section'),
             queuePosition: document.getElementById('queue-position'),
             progressBar: document.getElementById('progress-bar'),
+            queueStats: document.getElementById('queue-stats'),
+            completedCount: document.getElementById('completed-count'),
+            processingCount: document.getElementById('processing-count'),
+            pendingCount: document.getElementById('pending-count'),
+            failedCount: document.getElementById('failed-count'),
             resultsDiv: document.getElementById('results'),
+            resultsSummary: document.getElementById('results-summary'),
             outputDiv: document.getElementById('output'),
             errorContainer: document.getElementById('error-container'),
             errorMessage: document.getElementById('error-message'),
@@ -132,6 +339,16 @@
             pageInfo: document.getElementById('page-info'),
             paginationControls: document.getElementById('pagination-controls'),
             downloadExcelButton: document.getElementById('downloadExcelButton'),
+            refreshButton: document.getElementById('refreshButton'),
+            batchPreviewContainer: document.getElementById('batch-preview-container'),
+            recoveryBanner: document.getElementById('recovery-banner'),
+            debugPanel: document.getElementById('debug-panel'),
+            debugUserId: document.getElementById('debug-user-id'),
+            debugActiveJobs: document.getElementById('debug-active-jobs'),
+            debugLastUpdate: document.getElementById('debug-last-update'),
+            debugSessionStatus: document.getElementById('debug-session-status'),
+            debugProcessingTime: document.getElementById('debug-processing-time'),
+            debugSuccessRate: document.getElementById('debug-success-rate'),
             selectors: {
                 idade: document.getElementById('select-idade'),
                 email: document.getElementById('select-email'),
@@ -139,6 +356,7 @@
             }
         });
 
+        // === GLOBAL STATE ===
         let allExtractedData = [];
         let sortState = { key: null, direction: 'asc' };
         let currentPage = 1;
@@ -146,121 +364,628 @@
         let unsubscribe = null;
         let userId = localStorage.getItem('userId') || `user_${Math.random().toString(36).substr(2, 9)}`;
         localStorage.setItem('userId', userId);
+        let batchStartTime = null;
+        let processingStats = {
+            totalJobs: 0,
+            completedJobs: 0,
+            startTime: null,
+            lastUpdateTime: null
+        };
 
+        // === DEBUG FUNCTIONS ===
+        ui.debugUserId.textContent = userId;
+
+        document.getElementById('toggle-debug').addEventListener('click', (e) => {
+            e.preventDefault();
+            ui.debugPanel.classList.toggle('hidden');
+        });
+
+        document.getElementById('debug-clear-session').addEventListener('click', () => {
+            clearSavedJobs();
+            localStorage.clear();
+            location.reload();
+        });
+
+        document.getElementById('debug-show-status').addEventListener('click', async () => {
+            try {
+                const response = await fetch(`/api/queue-status?userId=${userId}`);
+                const data = await response.json();
+                console.log('🔍 Queue Status:', data);
+                alert(`Status: ${data.stats.completed}/${data.stats.total} completos`);
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        });
+
+        document.getElementById('debug-force-cleanup').addEventListener('click', async () => {
+            if (confirm('Tem certeza que deseja limpar todos os jobs?')) {
+                try {
+                    const response = await fetch('/api/cleanup-jobs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, olderThanHours: 0 })
+                    });
+                    const data = await response.json();
+                    alert(`Limpeza concluída: ${data.deleted} jobs removidos`);
+                } catch (error) {
+                    console.error('Error in cleanup:', error);
+                }
+            }
+        });
+
+        // === VALIDATION FUNCTIONS ===
+        function validateBatchUpload(files) {
+            const MAX_BATCH_SIZE = 200;
+            const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+            const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB
+            const ALLOWED_TYPES = ['application/pdf'];
+            
+            const issues = [];
+            
+            if (files.length === 0) {
+                issues.push('Nenhum arquivo selecionado');
+                return { valid: false, issues };
+            }
+            
+            if (files.length > MAX_BATCH_SIZE) {
+                issues.push(`Máximo ${MAX_BATCH_SIZE} arquivos por lote (selecionados: ${files.length})`);
+            }
+            
+            let totalSize = 0;
+            let invalidFiles = [];
+            let oversizedFiles = [];
+            
+            Array.from(files).forEach((file) => {
+                if (!ALLOWED_TYPES.includes(file.type)) {
+                    invalidFiles.push(`${file.name} (tipo: ${file.type})`);
+                }
+                
+                if (file.size > MAX_FILE_SIZE) {
+                    oversizedFiles.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+                }
+                
+                totalSize += file.size;
+            });
+            
+            if (invalidFiles.length > 0) {
+                issues.push(`Arquivos inválidos: ${invalidFiles.slice(0, 3).join(', ')}${invalidFiles.length > 3 ? ` e mais ${invalidFiles.length - 3}` : ''}`);
+            }
+            
+            if (oversizedFiles.length > 0) {
+                issues.push(`Arquivos muito grandes: ${oversizedFiles.slice(0, 3).join(', ')}${oversizedFiles.length > 3 ? ` e mais ${oversizedFiles.length - 3}` : ''}`);
+            }
+            
+            if (totalSize > MAX_TOTAL_SIZE) {
+                issues.push(`Tamanho total muito grande: ${(totalSize / 1024 / 1024).toFixed(1)}MB (máximo: 100MB)`);
+            }
+            
+            return {
+                valid: issues.length === 0,
+                issues,
+                stats: {
+                    fileCount: files.length,
+                    totalSizeMB: (totalSize / 1024 / 1024).toFixed(1),
+                    avgSizeMB: ((totalSize / files.length) / 1024 / 1024).toFixed(1)
+                }
+            };
+        }
+
+        function estimateBatchTime(fileCount) {
+            const avgTimePerFile = 4; // segundos
+            const overhead = Math.ceil(fileCount / 10) * 5; // overhead a cada 10 arquivos
+            const totalSeconds = (fileCount * avgTimePerFile) + overhead;
+            
+            if (totalSeconds < 60) {
+                return `~${totalSeconds}s`;
+            } else if (totalSeconds < 3600) {
+                return `~${Math.ceil(totalSeconds / 60)} minutos`;
+            } else {
+                return `~${Math.ceil(totalSeconds / 3600)} horas`;
+            }
+        }
+
+        function showBatchPreview(files, selectedFields) {
+            const validation = validateBatchUpload(files);
+            
+            let previewHtml = `
+                <div class="batch-preview ${validation.valid ? 'validation-success' : 'validation-error'} border-2 rounded-xl p-6 mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-xl font-bold flex items-center">
+                            ${validation.valid ? '✅' : '⚠️'} Resumo do Lote
+                        </h4>
+                        <div class="text-lg font-semibold">
+                            ${files.length} arquivos
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div class="space-y-2">
+                            <div><strong>📁 Total de arquivos:</strong> ${files.length}</div>
+                            <div><strong>💾 Tamanho total:</strong> ${validation.stats?.totalSizeMB}MB</div>
+                            <div><strong>📊 Tamanho médio:</strong> ${validation.stats?.avgSizeMB}MB</div>
+                        </div>
+                        <div class="space-y-2">
+                            <div><strong>🎯 Campos selecionados:</strong> ${selectedFields.length}</div>
+                            <div class="ml-4">• ${selectedFields.map(f => f.charAt(0).toUpperCase() + f.slice(1)).join('<br>• ')}</div>
+                        </div>
+                        <div class="space-y-2">
+                            <div><strong>⏱️ Tempo estimado:</strong> ${estimateBatchTime(files.length)}</div>
+                            <div><strong>📈 Status:</strong> ${validation.valid ? '✅ Pronto para processar' : '❌ Correções necessárias'}</div>
+                            <div><strong>🎯 Método:</strong> Extração inteligente</div>
+                        </div>
+                    </div>
+            `;
+            
+            if (!validation.valid) {
+                previewHtml += `
+                    <div class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <strong class="text-red-800 flex items-center mb-2">
+                            ⚠️ Problemas encontrados:
+                        </strong>
+                        <ul class="list-disc list-inside text-red-700 space-y-1">
+                            ${validation.issues.map(issue => `<li>${issue}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            } else {
+                previewHtml += `
+                    <div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <div class="text-green-800 flex items-center">
+                            ✨ <strong>Tudo pronto!</strong> Seus arquivos passaram na validação e estão prontos para processamento.
+                        </div>
+                    </div>
+                `;
+            }
+            
+            previewHtml += `</div>`;
+            
+            ui.batchPreviewContainer.innerHTML = previewHtml;
+            return validation.valid;
+        }
+
+        // === SESSION RECOVERY ===
+        function initSessionRecovery() {
+            const savedJobIds = localStorage.getItem(`jobIds_${userId}`);
+            const savedTimestamp = localStorage.getItem(`jobIds_timestamp_${userId}`);
+            
+            if (savedJobIds && savedTimestamp) {
+                try {
+                    const jobIds = JSON.parse(savedJobIds);
+                    const timestamp = parseInt(savedTimestamp);
+                    const hoursSince = (Date.now() - timestamp) / (1000 * 60 * 60);
+                    
+                    // Auto-cleanup após 24 horas
+                    if (hoursSince > 24) {
+                        clearSavedJobs();
+                        return;
+                    }
+                    
+                    if (jobIds.length > 0) {
+                        console.log(`🔄 [RECOVERY] Recuperando ${jobIds.length} jobs da sessão anterior`);
+                        showRecoveryOption(jobIds, hoursSince);
+                    }
+                } catch (error) {
+                    console.error('[RECOVERY] Erro ao recuperar sessão:', error);
+                    clearSavedJobs();
+                }
+            }
+        }
+
+        function showRecoveryOption(jobIds, hoursSince) {
+            const recoveryHtml = `
+                <div class="recovery-banner bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-6 mb-6 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div class="text-3xl">🔄</div>
+                            <div>
+                                <h4 class="text-lg font-bold text-yellow-800">Sessão Anterior Detectada</h4>
+                                <p class="text-yellow-700">
+                                    Encontrados <strong>${jobIds.length} jobs</strong> da sessão anterior 
+                                    (${hoursSince < 1 ? Math.round(hoursSince * 60) + ' minutos' : Math.round(hoursSince) + ' horas'} atrás)
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button id="recover-session" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-all transform hover:scale-105">
+                                ✅ Recuperar
+                            </button>
+                            <button id="dismiss-recovery" class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg font-medium transition-all">
+                                ❌ Ignorar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            ui.recoveryBanner.innerHTML = recoveryHtml;
+            ui.recoveryBanner.classList.remove('hidden');
+            
+            document.getElementById('recover-session').addEventListener('click', () => {
+                console.log('🔄 Recuperando sessão anterior...');
+                listenForJobUpdates(jobIds);
+                ui.queueStatusSection.classList.remove('hidden');
+                ui.recoveryBanner.classList.add('hidden');
+                
+                // Atualiza stats de processamento
+                processingStats.totalJobs = jobIds.length;
+                processingStats.startTime = parseInt(localStorage.getItem(`jobIds_timestamp_${userId}`));
+                batchStartTime = processingStats.startTime;
+                
+                updateDebugInfo();
+            });
+            
+            document.getElementById('dismiss-recovery').addEventListener('click', () => {
+                clearSavedJobs();
+                ui.recoveryBanner.classList.add('hidden');
+            });
+        }
+
+        // === FILE HANDLING ===
         ui.pdfFileInput.addEventListener('change', (e) => {
             const files = e.target.files;
-            ui.fileNameDisplay.textContent = files.length > 0 ? `${files.length} arquivo(s) selecionado(s).` : '';
-            ui.extractButton.disabled = files.length === 0;
+            
+            if (files.length === 0) {
+                ui.fileNameDisplay.innerHTML = '';
+                ui.extractButton.disabled = true;
+                ui.batchPreviewContainer.innerHTML = '';
+                return;
+            }
+            
+            // Mostra informações básicas do lote
+            const totalSizeMB = Array.from(files).reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
+            
+            ui.fileNameDisplay.innerHTML = `
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div class="text-lg font-semibold text-blue-800">
+                        📁 ${files.length} arquivo(s) selecionado(s)
+                    </div>
+                    <div class="text-sm text-blue-600 mt-2 space-y-1">
+                        <div>💾 <strong>Tamanho total:</strong> ${totalSizeMB.toFixed(1)}MB</div>
+                        <div>📊 <strong>Tamanho médio:</strong> ${(totalSizeMB / files.length).toFixed(1)}MB por arquivo</div>
+                        <div class="text-xs text-blue-500 mt-2">
+                            👆 Clique em "Enviar para Extração" para ver detalhes completos e validação
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            ui.extractButton.disabled = false;
             hideError();
         });
 
+        // === MAIN EXTRACTION PROCESS ===
         ui.extractButton.addEventListener('click', async () => {
             const files = Array.from(ui.pdfFileInput.files);
             if (files.length === 0) return;
 
-            resetState();
-            ui.extractButton.disabled = true;
-            ui.queueStatusSection.classList.remove('hidden');
-
             const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-            const jobIds = [];
+            
+            // Mostra preview e valida
+            const isValid = showBatchPreview(files, selectedFields);
+            if (!isValid) {
+                showError('Por favor, corrija os problemas identificados antes de prosseguir.');
+                return;
+            }
 
-            for (const file of files) {
+            // Confirma processamento para lotes grandes
+            if (files.length > 50) {
+                const confirmed = confirm(
+                    `Você está prestes a processar ${files.length} currículos.\n\n` +
+                    `Tempo estimado: ${estimateBatchTime(files.length)}\n` +
+                    `Campos: ${selectedFields.join(', ')}\n\n` +
+                    `Deseja continuar?`
+                );
+                if (!confirmed) return;
+            }
+
+            resetState();
+            setButtonLoading(true);
+            ui.queueStatusSection.classList.remove('hidden');
+            ui.queueStats.classList.remove('hidden');
+
+            // Inicializa stats de processamento
+            processingStats = {
+                totalJobs: files.length,
+                completedJobs: 0,
+                startTime: Date.now(),
+                lastUpdateTime: Date.now()
+            };
+            batchStartTime = processingStats.startTime;
+
+            const jobIds = [];
+            let successfulUploads = 0;
+
+            // Processa arquivos em batches pequenos para evitar timeout
+            const UPLOAD_BATCH_SIZE = 5;
+            for (let i = 0; i < files.length; i += UPLOAD_BATCH_SIZE) {
+                const batch = files.slice(i, i + UPLOAD_BATCH_SIZE);
+                
                 try {
-                    const text = await extractTextFromPdf(file);
-                    const docRef = await addDoc(collection(db, "processing_queue"), {
-                        userId: userId,
-                        fileName: file.name,
-                        text: text,
-                        selectedFields: selectedFields,
-                        status: 'pending',
-                        createdAt: serverTimestamp()
+                    const batchPromises = batch.map(async (file) => {
+                        const text = await extractTextFromPdf(file);
+                        const docRef = await addDoc(collection(db, "processing_queue"), {
+                            userId: userId,
+                            fileName: file.name,
+                            text: text,
+                            selectedFields: selectedFields,
+                            status: 'pending',
+                            createdAt: serverTimestamp(),
+                            fileSize: file.size,
+                            batchId: Date.now()
+                        });
+                        return docRef.id;
                     });
-                    jobIds.push(docRef.id);
+                    
+                    const batchJobIds = await Promise.all(batchPromises);
+                    jobIds.push(...batchJobIds);
+                    successfulUploads += batchJobIds.length;
+                    
+                    // Atualiza progresso de upload
+                    updateUploadProgress(successfulUploads, files.length);
+                    
                 } catch (err) {
-                    showError(`Falha ao enviar o arquivo ${file.name} para a fila.`);
-                    console.error(err);
+                    console.error(`Erro no batch ${Math.floor(i/UPLOAD_BATCH_SIZE) + 1}:`, err);
+                    showError(`Falha ao enviar alguns arquivos do lote ${Math.floor(i/UPLOAD_BATCH_SIZE) + 1}.`);
                 }
             }
 
             if (jobIds.length > 0) {
+                console.log(`🚀 ${jobIds.length} jobs enviados para a fila`);
+                saveJobIds(jobIds);
                 listenForJobUpdates(jobIds);
+                
+                // Inicia processamento
                 try {
-                    await fetch('/api/start-processing', {
+                    const response = await fetch('/api/start-processing', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId: userId })
                     });
+                    
+                    const data = await response.json();
+                    if (response.ok) {
+                        console.log('✅ Processamento iniciado:', data.message);
+                        updateQueueStatus('Processamento iniciado! Aguarde...', 0);
+                    } else {
+                        throw new Error(data.error || 'Erro ao iniciar processamento');
+                    }
                 } catch (err) {
-                    showError("Falha ao iniciar o processamento no servidor.");
+                    showError("Falha ao iniciar o processamento no servidor. Tentando novamente...");
                     console.error("Error triggering worker:", err);
+                    
+                    // Retry após 5 segundos
+                    setTimeout(() => {
+                        fetch('/api/start-processing', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId: userId })
+                        }).catch(console.error);
+                    }, 5000);
                 }
+            } else {
+                showError("Nenhum arquivo foi processado com sucesso. Tente novamente.");
             }
+            
+            setButtonLoading(false);
         });
-        
+
+        function updateUploadProgress(uploaded, total) {
+            ui.queuePosition.textContent = `Enviando arquivos: ${uploaded}/${total} concluídos...`;
+            const progress = (uploaded / total) * 20; // 20% para upload
+            ui.progressBar.style.width = `${progress}%`;
+        }
+
+        function setButtonLoading(loading) {
+            ui.extractButton.disabled = loading;
+            if (loading) {
+                ui.extractButtonText.textContent = '⏳ Enviando...';
+                ui.extractButtonSpinner.classList.remove('hidden');
+            } else {
+                ui.extractButtonText.textContent = '🚀 Enviar para Extração';
+                ui.extractButtonSpinner.classList.add('hidden');
+            }
+        }
+
+        // === JOB LISTENING AND UPDATES ===
         function listenForJobUpdates(jobIds) {
-            if (unsubscribe) unsubscribe(); 
+            if (unsubscribe) unsubscribe();
+            
             const q = query(collection(db, "processing_queue"), where('userId', '==', userId));
             
             unsubscribe = onSnapshot(q, (snapshot) => {
                 let processedInThisBatch = 0;
+                let currentlyProcessing = 0;
+                
                 snapshot.docChanges().forEach((change) => {
                     const job = change.doc.data();
+                    
                     if (jobIds.includes(change.doc.id)) {
                         const existingIndex = allExtractedData.findIndex(d => d.jobId === change.doc.id);
                         
-                        if (job.status === 'completed' && job.result) {
+                        if (job.status === 'processing') {
+                            currentlyProcessing++;
+                        } else if (job.status === 'completed' && job.result) {
                             if (existingIndex === -1) {
-                                allExtractedData.push({ ...job.result, jobId: change.doc.id, fileName: job.fileName });
+                                allExtractedData.push({ 
+                                    ...job.result, 
+                                    jobId: change.doc.id, 
+                                    fileName: job.fileName,
+                                    extractionMethod: job.extractionMethod || 'unknown',
+                                    processingTime: job.processingTimeMs || 0
+                                });
                                 processedInThisBatch++;
+                                processingStats.completedJobs++;
                             }
                         } else if (job.status === 'failed' && existingIndex === -1) {
-                            allExtractedData.push({ jobId: change.doc.id, fileName: job.fileName, nome: `FALHA: ${job.fileName}` });
+                            allExtractedData.push({ 
+                                jobId: change.doc.id, 
+                                fileName: job.fileName, 
+                                nome: `❌ FALHA: ${job.fileName}`,
+                                error: job.error || 'Erro desconhecido',
+                                processingTime: job.processingTimeMs || 0
+                            });
                             showError(`Falha ao processar ${job.fileName}: ${job.error || 'Erro desconhecido.'}`);
                             processedInThisBatch++;
+                            processingStats.completedJobs++;
                         }
                     }
                 });
 
                 if (processedInThisBatch > 0) {
+                    processingStats.lastUpdateTime = Date.now();
                     renderTable();
+                    updateDebugInfo();
                 }
-                updateQueueStatus(jobIds);
+                
+                updateAdvancedQueueStatus(jobIds, currentlyProcessing);
 
             }, (error) => {
                 console.error("Error in snapshot listener: ", error);
-                showError("Erro de permissão ao ler os resultados. Verifique as regras de segurança do Firestore.");
+                showError("Erro de conexão com o banco de dados. Verifique sua conexão com a internet.");
             });
         }
 
-        async function updateQueueStatus(jobIds) {
+        function updateAdvancedQueueStatus(jobIds, currentlyProcessing) {
             const completedJobs = allExtractedData.length;
             const totalJobs = jobIds.length;
-            const remaining = totalJobs - completedJobs;
+            const pendingJobs = totalJobs - completedJobs - currentlyProcessing;
+            const failedJobs = allExtractedData.filter(item => item.nome && item.nome.startsWith("❌ FALHA:")).length;
+            const successfulJobs = completedJobs - failedJobs;
 
-            ui.queuePosition.textContent = `${completedJobs} de ${totalJobs} arquivos processados. ${remaining > 0 ? `${remaining} na fila.` : 'Fila concluída!'}`;
-            
+            // Atualiza contadores visuais
+            ui.completedCount.textContent = completedJobs;
+            ui.processingCount.textContent = currentlyProcessing;
+            ui.pendingCount.textContent = Math.max(0, pendingJobs);
+            ui.failedCount.textContent = failedJobs;
+
+            // Calcula progresso e ETA
             const progress = totalJobs > 0 ? (completedJobs / totalJobs) * 100 : 0;
             ui.progressBar.style.width = `${progress}%`;
 
+            // ETA calculation
+            let etaText = '';
+            if (completedJobs > 0 && pendingJobs > 0 && batchStartTime) {
+                const elapsed = (Date.now() - batchStartTime) / 1000;
+                const rate = completedJobs / elapsed;
+                if (rate > 0) {
+                    const etaSeconds = Math.ceil((pendingJobs + currentlyProcessing) / rate);
+                    etaText = ` • ETA: ${formatTime(etaSeconds)}`;
+                }
+            }
+
+            // Status text
+            let statusText = `${completedJobs}/${totalJobs} processados (${progress.toFixed(1)}%)`;
+            
+            if (currentlyProcessing > 0) {
+                statusText += ` • ${currentlyProcessing} processando`;
+            }
+            
+            if (pendingJobs > 0) {
+                statusText += ` • ${pendingJobs} na fila`;
+            }
+            
+            statusText += etaText;
+
             if (completedJobs === totalJobs) {
+                statusText += ' • ✅ Processamento concluído!';
+                ui.progressBar.style.backgroundColor = '#10b981'; // Verde
+                
                 if (unsubscribe) {
                     unsubscribe();
                     unsubscribe = null;
                 }
+                clearSavedJobs();
+                
+                // Mostra resumo final
+                showCompletionSummary(totalJobs, successfulJobs, failedJobs);
             }
-        }
-        
-        function resetState() {
-            allExtractedData = [];
-            sortState = { key: null, direction: 'asc' };
-            currentPage = 1;
-            ui.resultsDiv.classList.add('hidden');
-            ui.outputDiv.innerHTML = '';
-            ui.downloadExcelButton.classList.add('hidden');
-            hideError();
+            
+            ui.queuePosition.textContent = statusText;
         }
 
+        function showCompletionSummary(total, successful, failed) {
+            const processingTime = batchStartTime ? (Date.now() - batchStartTime) / 1000 : 0;
+            const avgTime = successful > 0 ? processingTime / successful : 0;
+            
+            const summaryHtml = `
+                <div class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-6 mb-4">
+                    <h4 class="text-xl font-bold text-green-800 mb-3">🎉 Processamento Concluído!</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div class="bg-white rounded-lg p-3 shadow-sm">
+                            <div class="text-2xl font-bold text-green-600">${successful}</div>
+                            <div class="text-sm text-gray-600">Sucessos</div>
+                        </div>
+                        <div class="bg-white rounded-lg p-3 shadow-sm">
+                            <div class="text-2xl font-bold text-red-600">${failed}</div>
+                            <div class="text-sm text-gray-600">Falhas</div>
+                        </div>
+                        <div class="bg-white rounded-lg p-3 shadow-sm">
+                            <div class="text-2xl font-bold text-blue-600">${formatTime(processingTime)}</div>
+                            <div class="text-sm text-gray-600">Tempo Total</div>
+                        </div>
+                        <div class="bg-white rounded-lg p-3 shadow-sm">
+                            <div class="text-2xl font-bold text-purple-600">${avgTime.toFixed(1)}s</div>
+                            <div class="text-sm text-gray-600">Tempo Médio</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center">
+                        <div class="text-lg font-semibold text-green-700">
+                            Taxa de sucesso: ${((successful / total) * 100).toFixed(1)}%
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            ui.resultsSummary.innerHTML = summaryHtml;
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) {
+                return `${Math.round(seconds)}s`;
+            } else if (seconds < 3600) {
+                return `${Math.round(seconds / 60)}min`;
+            } else {
+                return `${Math.round(seconds / 3600)}h`;
+            }
+        }
+
+        // === SESSION MANAGEMENT ===
+        function saveJobIds(jobIds) {
+            try {
+                localStorage.setItem(`jobIds_${userId}`, JSON.stringify(jobIds));
+                localStorage.setItem(`jobIds_timestamp_${userId}`, Date.now().toString());
+                console.log(`💾 Salvos ${jobIds.length} job IDs na sessão`);
+            } catch (error) {
+                console.error('[SAVE] Erro ao salvar job IDs:', error);
+            }
+        }
+
+        function clearSavedJobs() {
+            localStorage.removeItem(`jobIds_${userId}`);
+            localStorage.removeItem(`jobIds_timestamp_${userId}`);
+            delete window.batchStartTime;
+            batchStartTime = null;
+            console.log('🧹 Sessão limpa');
+        }
+
+        function updateDebugInfo() {
+            ui.debugActiveJobs.textContent = processingStats.totalJobs - processingStats.completedJobs;
+            ui.debugLastUpdate.textContent = new Date(processingStats.lastUpdateTime).toLocaleTimeString();
+            ui.debugSessionStatus.textContent = batchStartTime ? 'Ativa' : 'Inativa';
+            
+            if (batchStartTime && processingStats.completedJobs > 0) {
+                const elapsed = (Date.now() - batchStartTime) / 1000;
+                ui.debugProcessingTime.textContent = formatTime(elapsed);
+                
+                const successRate = processingStats.totalJobs > 0 ? 
+                    ((processingStats.completedJobs / processingStats.totalJobs) * 100).toFixed(1) + '%' : '-';
+                ui.debugSuccessRate.textContent = successRate;
+            } else {
+                ui.debugProcessingTime.textContent = '-';
+                ui.debugSuccessRate.textContent = '-';
+            }
+        }
+
+        // === PDF PROCESSING ===
         async function extractTextFromPdf(file) {
             const fileReader = new FileReader();
             return new Promise((resolve, reject) => {
@@ -269,29 +994,66 @@
                         const typedarray = new Uint8Array(e.target.result);
                         const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
                         let fullText = '';
-                        for (let i = 1; i <= pdf.numPages; i++) {
+                        
+                        const maxPages = Math.min(pdf.numPages, 5); // Limita a 5 páginas para acelerar
+                        for (let i = 1; i <= maxPages; i++) {
                             const page = await pdf.getPage(i);
                             const textContent = await page.getTextContent();
-                            fullText += textContent.items.map(item => item.str).join(' ');
+                            const pageText = textContent.items.map(item => item.str).join(' ');
+                            fullText += pageText + '\n';
                         }
-                        resolve(fullText);
-                    } catch (err) { reject(err); }
+                        
+                        resolve(fullText.trim());
+                    } catch (err) { 
+                        reject(err); 
+                    }
                 };
-                fileReader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+                fileReader.onerror = () => reject(new Error('Não foi possível ler o arquivo PDF.'));
                 fileReader.readAsArrayBuffer(file);
             });
         }
-        
+
+        // === TABLE RENDERING ===
+        function resetState() {
+            allExtractedData = [];
+            sortState = { key: null, direction: 'asc' };
+            currentPage = 1;
+            ui.resultsDiv.classList.add('hidden');
+            ui.outputDiv.innerHTML = '';
+            ui.downloadExcelButton.classList.add('hidden');
+            ui.refreshButton.classList.add('hidden');
+            ui.resultsSummary.innerHTML = '';
+            hideError();
+        }
+
         function setupTable() {
             const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
             const headers = [
                 { key: 'nome', label: 'Nome', sortable: true },
                 ...selectedFields.map(f => ({ key: f, label: f.charAt(0).toUpperCase() + f.slice(1), sortable: true })),
-                { key: 'fileName', label: 'Arquivo', sortable: true }
+                { key: 'fileName', label: 'Arquivo Original', sortable: true }
             ];
+            
             const iconSvg = `<svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 15a.5.5 0 0 0 .5-.5V2.707l3.146 3.147a.5.5 0 0 0 .708-.708l-4-4a.5.5 0 0 0-.708 0l-4 4a.5.5 0 1 0 .708.708L7.5 2.707V14.5a.5.5 0 0 0 .5.5z"/></svg>`;
-            const headerHtml = headers.map(h => h.sortable ? `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sortable-header" data-sort-key="${h.key}">${h.label}${iconSvg}</th>` : `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h.label}</th>`).join('');
-            ui.outputDiv.innerHTML = `<div class="overflow-x-auto border border-gray-200 rounded-lg"><table class="min-w-full bg-white"><thead class="bg-gray-50"><tr>${headerHtml}</tr></thead><tbody class="divide-y divide-gray-200"></tbody></table></div>`;
+            
+            const headerHtml = headers.map(h => 
+                h.sortable ? 
+                `<th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider sortable-header" data-sort-key="${h.key}">${h.label}${iconSvg}</th>` : 
+                `<th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">${h.label}</th>`
+            ).join('');
+            
+            ui.outputDiv.innerHTML = `
+                <div class="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
+                    <table class="min-w-full bg-white">
+                        <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
+                            <tr>${headerHtml}</tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
             document.querySelectorAll('.sortable-header').forEach(header => {
                 header.addEventListener('click', () => {
                     const key = header.dataset.sortKey;
@@ -302,25 +1064,30 @@
                 });
             });
         }
-        
+
         function sortData() {
             if (!sortState.key) return;
+            
             const { key, direction } = sortState;
             const factor = direction === 'asc' ? 1 : -1;
+            
             allExtractedData.sort((a, b) => {
                 let valA = a[key], valB = b[key];
                 if (valA === undefined || valA === null) valA = '';
                 if (valB === undefined || valB === null) valB = '';
+                
                 if (key === 'idade') {
                     const aHas = valA > 0, bHas = valB > 0;
                     if (aHas !== bHas) return aHas ? -1 : 1;
                     return (valA - valB) * factor;
                 }
+                
                 if (key === 'email' || key === 'contatos') {
                     const aHas = Array.isArray(valA) ? valA.length > 0 : String(valA).length > 0;
                     const bHas = Array.isArray(valB) ? valB.length > 0 : String(valB).length > 0;
                     if (aHas !== bHas) return aHas ? -1 : 1;
                 }
+                
                 if (typeof valA === 'string') return valA.localeCompare(valB, 'pt-BR') * factor;
                 if (typeof valA === 'number') return (valA - valB) * factor;
                 return 0;
@@ -331,63 +1098,240 @@
             if (!document.querySelector('#output table')) {
                 setupTable();
             }
+            
             ui.resultsDiv.classList.remove('hidden');
-            if (allExtractedData.length > 0) ui.downloadExcelButton.classList.remove('hidden');
+            if (allExtractedData.length > 0) {
+                ui.downloadExcelButton.classList.remove('hidden');
+                ui.refreshButton.classList.remove('hidden');
+            }
+            
             sortData();
+            
             const tableBody = document.querySelector('#output tbody');
             if (!tableBody) return;
+            
             tableBody.innerHTML = '';
+            
             const paginatedData = allExtractedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-            paginatedData.forEach(data => {
+            const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
+            
+            paginatedData.forEach((data, index) => {
                 const row = document.createElement('tr');
-                row.className = 'hover:bg-gray-50';
-                const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.nome || 'N/A'}</td>`;
-                if (selectedFields.includes('idade')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade : 'N/A'}</td>`;
-                if (selectedFields.includes('email')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.email || 'N/A'}</td>`;
-                if (selectedFields.includes('contatos')) cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.contatos?.join(', ') || 'N/A'}</td>`;
-                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${data.fileName}</td>`;
+                row.className = `hover:bg-gray-50 transition-colors ${data.nome && data.nome.startsWith('❌ FALHA:') ? 'bg-red-50' : ''}`;
+                
+                let cells = `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${data.nome || 'N/A'}</td>`;
+                
+                if (selectedFields.includes('idade')) {
+                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${data.idade > 0 ? data.idade + ' anos' : 'N/A'}</td>`;
+                }
+                if (selectedFields.includes('email')) {
+                    const email = data.email || 'N/A';
+                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${email !== 'N/A' ? `<a href="mailto:${email}" class="text-blue-600 hover:text-blue-800">${email}</a>` : 'N/A'}</td>`;
+                }
+                if (selectedFields.includes('contatos')) {
+                    const contatos = data.contatos && data.contatos.length > 0 ? data.contatos.join(', ') : 'N/A';
+                    cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${contatos}</td>`;
+                }
+                
+                cells += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${data.fileName}</td>`;
+                
                 row.innerHTML = cells;
                 tableBody.appendChild(row);
             });
+            
+            // Atualiza indicadores de ordenação
             document.querySelectorAll('.sortable-header').forEach(h => {
                 h.classList.remove('sorted', 'asc', 'desc');
-                if (h.dataset.sortKey === sortState.key) h.classList.add('sorted', sortState.direction);
+                if (h.dataset.sortKey === sortState.key) {
+                    h.classList.add('sorted', sortState.direction);
+                }
             });
+            
             renderPaginationControls();
         }
 
         function renderPaginationControls() {
             const totalPages = Math.ceil(allExtractedData.length / ITEMS_PER_PAGE);
-            if (totalPages <= 1) return ui.paginationControls.classList.add('hidden');
+            
+            if (totalPages <= 1) {
+                ui.paginationControls.classList.add('hidden');
+                return;
+            }
+            
             ui.paginationControls.classList.remove('hidden');
-            ui.pageInfo.textContent = `Página ${currentPage} de ${totalPages}`;
+            ui.pageInfo.textContent = `Página ${currentPage} de ${totalPages} (${allExtractedData.length} registros)`;
             ui.prevPage.disabled = currentPage === 1;
             ui.nextPage.disabled = currentPage === totalPages;
         }
 
-        ui.prevPage.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderTable(); } });
-        ui.nextPage.addEventListener('click', () => { if (currentPage < Math.ceil(allExtractedData.length / ITEMS_PER_PAGE)) { currentPage++; renderTable(); } });
+        // === EVENT LISTENERS ===
+        ui.prevPage.addEventListener('click', () => { 
+            if (currentPage > 1) { 
+                currentPage--; 
+                renderTable(); 
+            } 
+        });
+        
+        ui.nextPage.addEventListener('click', () => { 
+            if (currentPage < Math.ceil(allExtractedData.length / ITEMS_PER_PAGE)) { 
+                currentPage++; 
+                renderTable(); 
+            } 
+        });
+        
+        ui.refreshButton.addEventListener('click', () => {
+            renderTable();
+            showMessage('✅ Tabela atualizada!', 'success');
+        });
         
         ui.downloadExcelButton.addEventListener('click', () => {
             const selectedFields = Object.keys(ui.selectors).filter(key => ui.selectors[key].checked);
-            const dataToExport = allExtractedData.filter(item => !item.nome.startsWith("FALHA:")).map(item => {
-                const row = { Nome: item.nome || 'N/A' };
-                if (selectedFields.includes('idade')) row.Idade = item.idade > 0 ? item.idade : 'N/A';
-                if (selectedFields.includes('email')) row['E-mail'] = item.email || 'N/A';
-                if (selectedFields.includes('contatos')) row.Contatos = item.contatos?.join(', ') || 'N/A';
-                row.Arquivo = item.fileName;
-                return row;
-            });
-            const ws = XLSX.utils.json_to_sheet(dataToExport);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Dados Extraídos");
-            XLSX.writeFile(wb, "extracao_curriculos.xlsx");
+            const dataToExport = allExtractedData
+                .filter(item => !item.nome || !item.nome.startsWith("❌ FALHA:"))
+                .map(item => {
+                    const row = { 
+                        'Nome': item.nome || 'N/A',
+                        'Arquivo': item.fileName || 'N/A'
+                    };
+                    
+                    if (selectedFields.includes('idade')) row['Idade'] = item.idade > 0 ? item.idade : 'N/A';
+                    if (selectedFields.includes('email')) row['E-mail'] = item.email || 'N/A';
+                    if (selectedFields.includes('contatos')) row['Contatos'] = item.contatos?.join(', ') || 'N/A';
+                    
+                    // Adiciona metadados
+                    if (item.extractionMethod) row['Método de Extração'] = item.extractionMethod;
+                    if (item.processingTime) row['Tempo de Processamento (ms)'] = item.processingTime;
+                    
+                    return row;
+                });
+            
+            if (dataToExport.length === 0) {
+                showError('Nenhum dado válido para exportar.');
+                return;
+            }
+            
+            try {
+                const ws = XLSX.utils.json_to_sheet(dataToExport);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Currículos Extraídos");
+                
+                // Adiciona metadados ao arquivo
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                const fileName = `curriculos_extraidos_${timestamp}.xlsx`;
+                
+                XLSX.writeFile(wb, fileName);
+                showMessage(`✅ Download concluído: ${fileName}`, 'success');
+            } catch (error) {
+                console.error('Erro ao gerar Excel:', error);
+                showError('Erro ao gerar arquivo Excel. Tente novamente.');
+            }
         });
 
-        function showError(message) { ui.errorMessage.textContent = message; ui.errorContainer.classList.remove('hidden'); }
-        function hideError() { ui.errorContainer.classList.add('hidden'); }
+        // === UTILITY FUNCTIONS ===
+        function updateQueueStatus(message, progress) {
+            ui.queuePosition.textContent = message;
+            ui.progressBar.style.width = `${progress}%`;
+        }
+
+        function showError(message) { 
+            ui.errorMessage.textContent = message; 
+            ui.errorContainer.classList.remove('hidden');
+            console.error('❌ Erro:', message);
+        }
+        
+        function hideError() { 
+            ui.errorContainer.classList.add('hidden'); 
+        }
+
+        function showMessage(message, type = 'info') {
+            const colors = {
+                success: 'bg-green-50 border-green-200 text-green-700',
+                info: 'bg-blue-50 border-blue-200 text-blue-700',
+                warning: 'bg-yellow-50 border-yellow-200 text-yellow-700'
+            };
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `fixed top-4 right-4 ${colors[type]} border px-4 py-3 rounded-lg shadow-lg z-50 max-w-md`;
+            messageDiv.textContent = message;
+            
+            document.body.appendChild(messageDiv);
+            
+            setTimeout(() => {
+                messageDiv.style.opacity = '0';
+                messageDiv.style.transform = 'translateY(-20px)';
+                setTimeout(() => messageDiv.remove(), 300);
+            }, 3000);
+        }
+
+        // === INITIALIZATION ===
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Extrator de Currículos v2.0 inicializado');
+            console.log(`👤 User ID: ${userId}`);
+            
+            initSessionRecovery();
+            updateDebugInfo();
+            
+            // Auto-cleanup de sessões antigas
+            const timestamp = localStorage.getItem(`jobIds_timestamp_${userId}`);
+            if (timestamp && Date.now() - parseInt(timestamp) > 24 * 60 * 60 * 1000) {
+                console.log('🧹 Auto-limpeza de sessão antiga');
+                clearSavedJobs();
+            }
+            
+            // Inicializa tooltips e outras melhorias de UX
+            initializeEnhancements();
+        });
+
+        function initializeEnhancements() {
+            // Auto-scroll para resultados quando aparecem
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.target === ui.resultsDiv && !ui.resultsDiv.classList.contains('hidden')) {
+                        setTimeout(() => {
+                            ui.resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 500);
+                    }
+                });
+            });
+            
+            observer.observe(ui.resultsDiv, { attributes: true, attributeFilter: ['class'] });
+            
+            // Atalhos de teclado
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    switch(e.key) {
+                        case 'e':
+                            e.preventDefault();
+                            if (!ui.downloadExcelButton.classList.contains('hidden')) {
+                                ui.downloadExcelButton.click();
+                            }
+                            break;
+                        case 'r':
+                            e.preventDefault();
+                            if (!ui.refreshButton.classList.contains('hidden')) {
+                                ui.refreshButton.click();
+                            }
+                            break;
+                    }
+                }
+            });
+            
+            // Progress bar animado
+            ui.progressBar.style.transition = 'width 0.5s ease-in-out, background-color 0.3s ease';
+        }
+
+        // === GLOBAL EXPOSURE FOR TESTING ===
+        window.CVExtractor = {
+            userId,
+            processingStats,
+            allExtractedData,
+            clearSavedJobs,
+            showBatchPreview,
+            validateBatchUpload,
+            estimateBatchTime
+        };
+
+        console.log('🎯 Sistema pronto! Use window.CVExtractor para debug.');
     </script>
 </body>
 </html>
-

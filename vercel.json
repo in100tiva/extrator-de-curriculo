@@ -1,10 +1,19 @@
 {
   "functions": {
-    "api/process-job.js": {
-      "maxDuration": 10
+    "api/process-single.js": {
+      "maxDuration": 8,
+      "memory": 1024,
+      "regions": ["iad1"]
     },
     "api/start-processing.js": {
-      "maxDuration": 10
+      "maxDuration": 5,
+      "memory": 512,
+      "regions": ["iad1"]
+    },
+    "api/cleanup-jobs.js": {
+      "maxDuration": 10,
+      "memory": 512,
+      "regions": ["iad1"]
     }
   },
   "rewrites": [
@@ -20,8 +29,40 @@
         {
           "key": "Cache-Control",
           "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "POST, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
         }
       ]
     }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
 }

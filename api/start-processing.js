@@ -31,8 +31,8 @@ export default async function handler(request, response) {
         const cleanupResult = await cleanupStuckJobs(userId);
         console.log(`[START-PROCESSING] Limpeza: ${cleanupResult.reset} jobs resetados, ${cleanupResult.failed} marcados como failed`);
 
-        // ETAPA 3: Encontrar jobs pendentes (múltiplos para processamento paralelo limitado)
-        const pendingJobs = await findPendingJobs(userId, 3); // Máximo 3 simultâneos
+        // ETAPA 3: Encontrar jobs pendentes (processamento sequencial para Vercel gratuita)
+        const pendingJobs = await findPendingJobs(userId, 5); // Máximo 5 para começar
         
         if (!pendingJobs || pendingJobs.length === 0) {
             console.log(`[START-PROCESSING] ✅ Nenhum job pendente encontrado para ${userId}`);
@@ -44,25 +44,21 @@ export default async function handler(request, response) {
 
         console.log(`[START-PROCESSING] 🎯 ${pendingJobs.length} job(s) pendente(s) encontrado(s)`);
 
-        // ETAPA 4: Disparar jobs com delay escalonado
-        const triggerResults = await triggerMultipleJobs(pendingJobs, userId);
+        // ETAPA 4: Disparar processamento otimizado para Vercel gratuita
+        const triggerResult = await triggerBatchProcessing(pendingJobs, userId);
         
-        const successfulJobs = triggerResults.filter(r => r.success).length;
-        const failedJobs = triggerResults.filter(r => !r.success).length;
-
-        if (successfulJobs > 0) {
-            console.log(`[START-PROCESSING] ✅ ${successfulJobs} job(s) iniciado(s) com sucesso, ${failedJobs} falharam`);
+        if (triggerResult.success) {
+            console.log(`[START-PROCESSING] ✅ Processamento iniciado para ${pendingJobs.length} jobs`);
             return response.status(202).json({ 
                 success: true, 
-                message: `Processing started for ${successfulJobs} jobs`,
-                successful: successfulJobs,
-                failed: failedJobs
+                message: `Batch processing started for ${pendingJobs.length} jobs`,
+                jobCount: pendingJobs.length
             });
         } else {
-            console.error(`[START-PROCESSING] ❌ Falha ao disparar todos os jobs`);
+            console.error(`[START-PROCESSING] ❌ Falha ao iniciar processamento em lote`);
             return response.status(500).json({ 
                 success: false, 
-                error: 'Failed to trigger any jobs' 
+                error: 'Failed to start batch processing' 
             });
         }
 
@@ -80,11 +76,9 @@ export default async function handler(request, response) {
  */
 async function cleanupOldJobs(userId) {
     try {
-        // CORREÇÃO: Query simples sem índice composto
-        // Busca jobs do usuário primeiro, depois filtra por data
         const userJobsSnapshot = await db.collection('processing_queue')
             .where('userId', '==', userId)
-            .limit(100) // Limita para não sobrecarregar
+            .limit(100)
             .get();
 
         if (userJobsSnapshot.empty) {
@@ -98,7 +92,6 @@ async function cleanupOldJobs(userId) {
         userJobsSnapshot.docs.forEach(doc => {
             const jobData = doc.data();
             
-            // Verifica se é antigo e finalizado
             if ((jobData.status === 'completed' || jobData.status === 'failed') && 
                 jobData.finishedAt && 
                 jobData.finishedAt.toMillis() < oneDayAgo) {
@@ -127,10 +120,9 @@ async function cleanupOldJobs(userId) {
  */
 async function cleanupStuckJobs(userId) {
     const now = Timestamp.now();
-    const fiveMinutesAgo = Timestamp.fromMillis(now.toMillis() - 5 * 60 * 1000);
+    const tenMinutesAgo = Timestamp.fromMillis(now.toMillis() - 10 * 60 * 1000); // 10 minutos
     
     try {
-        // Busca jobs em processamento há muito tempo
         const stuckJobsSnapshot = await db.collection('processing_queue')
             .where('userId', '==', userId)
             .where('status', '==', 'processing')
@@ -150,16 +142,16 @@ async function cleanupStuckJobs(userId) {
             const jobData = doc.data();
             const startedAt = jobData.startedAt || jobData.claimedAt;
             
-            if (startedAt && startedAt.toMillis() < fiveMinutesAgo.toMillis()) {
-                // Job travado há mais de 5 minutos - marca como failed
+            if (startedAt && startedAt.toMillis() < tenMinutesAgo.toMillis()) {
+                // Job travado há mais de 10 minutos - marca como failed
                 batch.update(doc.ref, {
                     status: 'failed',
                     finishedAt: now,
-                    error: 'Job travado - timeout de 5 minutos',
+                    error: 'Job travado - timeout de 10 minutos',
                     cleanedUp: true
                 });
                 failedCount++;
-                console.log(`[CLEANUP] Job ${doc.id} marcado como failed (travado há muito tempo)`);
+                console.log(`[CLEANUP] Job ${doc.id} marcado como failed (travado)`);
             } else {
                 // Job recente - reseta para pending
                 batch.update(doc.ref, {
@@ -185,9 +177,9 @@ async function cleanupStuckJobs(userId) {
 }
 
 /**
- * Encontra múltiplos jobs pendentes (para processamento paralelo limitado)
+ * Encontra jobs pendentes para processamento
  */
-async function findPendingJobs(userId, limit = 3) {
+async function findPendingJobs(userId, limit = 5) {
     try {
         const pendingSnapshot = await db.collection('processing_queue')
             .where('userId', '==', userId)
@@ -212,71 +204,127 @@ async function findPendingJobs(userId, limit = 3) {
 }
 
 /**
- * Dispara múltiplos jobs de forma assíncrona (fire-and-forget)
+ * Dispara processamento em lote otimizado para Vercel gratuita
+ * Usa estratégia de processamento sequencial com delays
  */
-async function triggerMultipleJobsAsync(jobs, userId) {
-    console.log(`[TRIGGER-ASYNC] Disparando ${jobs.length} job(s) em background...`);
-    
-    const baseUrl = getBaseUrl();
-    const results = [];
-
-    // Dispara TODOS os jobs imediatamente (fire-and-forget)
-    for (let i = 0; i < jobs.length; i++) {
-        const job = jobs[i];
-        console.log(`[TRIGGER-ASYNC] Disparando job ${i + 1}/${jobs.length}: ${job.id}`);
+async function triggerBatchProcessing(jobs, userId) {
+    try {
+        console.log(`[BATCH] Iniciando processamento de ${jobs.length} jobs...`);
         
-        // Fire-and-forget com delay escalonado
-        setTimeout(async () => {
-            try {
-                const response = await fetch(`${baseUrl}/api/process-single`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jobId: job.id, userId }),
-                });
-                
-                if (response.ok) {
-                    console.log(`[TRIGGER-ASYNC] ✅ Job ${job.id} processado em background`);
-                } else {
-                    console.error(`[TRIGGER-ASYNC] ❌ Job ${job.id} falhou: HTTP ${response.status}`);
-                }
-            } catch (error) {
-                console.error(`[TRIGGER-ASYNC] ❌ Erro no job ${job.id}:`, error.message);
-                
-                // Marca como failed para não travar
+        const baseUrl = getBaseUrl();
+        
+        // Processa primeiro job imediatamente
+        if (jobs.length > 0) {
+            const firstJob = jobs[0];
+            console.log(`[BATCH] Disparando primeiro job: ${firstJob.id}`);
+            
+            // Fire-and-forget para o primeiro job
+            fetch(`${baseUrl}/api/process-single`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: firstJob.id, userId }),
+            }).catch(error => {
+                console.error(`[BATCH] Erro no primeiro job:`, error);
+            });
+        }
+        
+        // Agenda os demais jobs com delay escalonado
+        for (let i = 1; i < jobs.length; i++) {
+            const job = jobs[i];
+            const delay = i * 8000; // 8 segundos entre cada job (mais conservador)
+            
+            setTimeout(async () => {
                 try {
-                    await db.collection('processing_queue').doc(job.id).update({
-                        status: 'failed',
-                        finishedAt: Timestamp.now(),
-                        error: `Disparo assíncrono falhou: ${error.message}`
+                    console.log(`[BATCH] Disparando job ${i + 1}/${jobs.length}: ${job.id}`);
+                    
+                    const response = await fetch(`${baseUrl}/api/process-single`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jobId: job.id, userId }),
                     });
-                } catch (updateError) {
-                    console.error(`[TRIGGER-ASYNC] Erro ao marcar como failed:`, updateError);
+                    
+                    if (response.ok) {
+                        console.log(`[BATCH] ✅ Job ${job.id} processado`);
+                        
+                        // Após cada job, verifica se há mais jobs pendentes
+                        setTimeout(() => checkAndProcessNext(userId), 2000);
+                    } else {
+                        console.error(`[BATCH] ❌ Job ${job.id} falhou: HTTP ${response.status}`);
+                        await markJobAsFailed(job.id, `HTTP ${response.status}`);
+                    }
+                    
+                } catch (error) {
+                    console.error(`[BATCH] ❌ Erro no job ${job.id}:`, error.message);
+                    await markJobAsFailed(job.id, error.message);
                 }
-            }
-        }, i * 3000); // 3 segundos entre cada job (mais tempo para evitar sobrecarga)
+            }, delay);
+        }
         
-        // Marca como "disparado" para retorno imediato
-        results.push({ success: true, jobId: job.id });
+        return { success: true };
+        
+    } catch (error) {
+        console.error('[BATCH] Erro no processamento em lote:', error);
+        return { success: false };
     }
-    
-    return results;
+}
+
+/**
+ * Verifica e processa próximos jobs automaticamente
+ */
+async function checkAndProcessNext(userId) {
+    try {
+        // Verifica se ainda há jobs pendentes
+        const pendingJobs = await findPendingJobs(userId, 3);
+        
+        if (pendingJobs.length > 0) {
+            console.log(`[CHECK-NEXT] Encontrados ${pendingJobs.length} jobs pendentes adicionais`);
+            
+            // Dispara mais uma rodada de processamento
+            const baseUrl = getBaseUrl();
+            fetch(`${baseUrl}/api/start-processing`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId }),
+            }).catch(error => {
+                console.error(`[CHECK-NEXT] Erro ao disparar próxima rodada:`, error);
+            });
+        } else {
+            console.log(`[CHECK-NEXT] ✅ Todos os jobs processados para ${userId}`);
+        }
+        
+    } catch (error) {
+        console.error('[CHECK-NEXT] Erro ao verificar próximos jobs:', error);
+    }
+}
+
+/**
+ * Marca job como falha quando não consegue processar
+ */
+async function markJobAsFailed(jobId, errorMessage) {
+    try {
+        await db.collection('processing_queue').doc(jobId).update({
+            status: 'failed',
+            finishedAt: Timestamp.now(),
+            error: `Falha no disparo: ${errorMessage}`
+        });
+        console.log(`[MARK-FAILED] Job ${jobId} marcado como failed`);
+    } catch (updateError) {
+        console.error(`[MARK-FAILED] Erro ao marcar job ${jobId} como failed:`, updateError);
+    }
 }
 
 /**
  * Obtém URL base da aplicação
  */
 function getBaseUrl() {
-    // URL de produção específica
     if (process.env.VERCEL_ENV === 'production') {
         return 'https://pdf.in100tiva.com';
     }
     
-    // Em preview/desenvolvimento na Vercel
     if (process.env.VERCEL_URL) {
         return `https://${process.env.VERCEL_URL}`;
     }
     
-    // Fallback para desenvolvimento local
     return process.env.NODE_ENV === 'development' 
         ? 'http://localhost:3000' 
         : 'https://pdf.in100tiva.com';
